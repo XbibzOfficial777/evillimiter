@@ -19,6 +19,17 @@ REPO="XbibzOfficial777/evillimiter"
 BRANCH="master"
 HIDDEN_DIR="/opt/.evillimiter"
 
+VERBOSE=false
+[[ "$1" == "--verbose" ]] && VERBOSE=true
+
+quiet() {
+    if $VERBOSE; then
+        "$@"
+    else
+        "$@" > /dev/null 2>&1
+    fi
+}
+
 clear
 
 echo -e "${RED}"
@@ -75,12 +86,12 @@ PIP="python3 -m pip install --break-system-packages"
 # ── SYSTEM UPDATE ──
 section "Preparing System"
 run "Updating package list"
-apt-get update -y 2>&1 | tail -1
+quiet apt-get update -y
 ok "Package list updated"
 
 section "Installing Dependencies"
 run "Installing Python 3, pip, git, curl"
-apt-get install -y python3 python3-pip git curl 2>&1 | tail -3
+quiet apt-get install -y python3 python3-pip git curl
 ok "Base dependencies installed"
 
 # ── REMOVE OLD ──
@@ -103,20 +114,20 @@ mkdir -p /tmp/.evillimiter-install
 cd /tmp/.evillimiter-install
 
 run "Downloading from GitHub"
-curl -#L "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz 2>&1
+quiet curl -sSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz
 ok "Download complete"
 
 run "Extracting archive"
-tar -xzf evillimiter.tar.gz
+quiet tar -xzf evillimiter.tar.gz
 cd "evillimiter-master"
 ok "Extracted successfully"
 
 # ── INSTALL PYTHON DEPS ──
 section "Installing Python Packages"
 
-# terminaltables pakai apt saja (biar system-wide, no PEP 668 issue)
+# terminaltables via apt (system-wide, no PEP 668 issue)
 run "Installing terminaltables via apt"
-apt-get install -y python3-terminaltables 2>&1 | tail -2
+quiet apt-get install -y python3-terminaltables
 if python3 -c "from terminaltables import SingleTable" 2>/dev/null; then
     ok "terminaltables installed (apt)"
 else
@@ -130,9 +141,8 @@ else
     fi
 fi
 
-# Sisanya via pip with --break-system-packages
 run "Installing pip dependencies (colorama, scapy, etc)"
-$PIP colorama netaddr netifaces tqdm scapy 2>&1
+quiet $PIP colorama netaddr netifaces tqdm scapy
 if [[ $? -eq 0 ]]; then
     ok "Python packages installed"
 else
@@ -143,7 +153,7 @@ fi
 # ── INSTALL EVILLIMITER ──
 section "Installing Evil Limiter"
 run "Running setup.py install"
-python3 setup.py install 2>&1
+quiet python3 setup.py install
 if [[ $? -eq 0 ]]; then
     ok "Evil Limiter installed"
 else
@@ -153,8 +163,7 @@ fi
 
 # ── VERIFY ──
 run "Verifying installation"
-python3 -c "from terminaltables import SingleTable; print('OK')" 2>&1
-if [[ $? -eq 0 ]]; then
+if python3 -c "from terminaltables import SingleTable; print('OK')" 2>/dev/null; then
     ok "Import verification passed"
 else
     fail "Import failed, fixing symlink..."
