@@ -72,7 +72,7 @@ class HostScanner:
     def _sweep(self, ip: str):
         packet = ARP(op=1, pdst=ip)
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=SyntaxWarning)
+            warnings.filterwarnings('ignore')
             answer = sr1(packet, retry=self.retries, timeout=self.timeout, verbose=0, iface=self.interface)
 
         if answer is not None:

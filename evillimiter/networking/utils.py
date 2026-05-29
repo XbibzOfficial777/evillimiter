@@ -28,7 +28,7 @@ def get_default_netmask(interface: str) -> str | None:
 def get_mac_by_ip(interface: str, address: str) -> str | None:
     packet = ARP(op=1, pdst=address)
     with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', category=SyntaxWarning)
+        warnings.filterwarnings('ignore')
         response = sr1(packet, timeout=3, verbose=0, iface=interface)
 
     if response is not None:
