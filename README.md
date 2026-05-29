@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://i.imgur.com/CBGh0Yx.png" width="200"/>
-  <h1>🔥 Evil Limiter 🔥</h1>
-  <p><b>Monitor • Analyze • Limit Bandwidth</b></p>
+  <h1>Evil Limiter</h1>
+  <p><b>Monitor / Analyze / Limit Bandwidth</b></p>
   <p>
     <a href="https://github.com/XbibzOfficial777/evillimiter/blob/main/LICENSE">
       <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge&logo=bookstack" alt="License"/>
@@ -15,33 +15,33 @@
   <p>
     <img src="https://img.shields.io/badge/Platform-Linux-important?style=flat-square&logo=linux"/>
     <img src="https://img.shields.io/badge/Python-3+-blue?style=flat-square&logo=python"/>
-    <img src="https://img.shields.io/badge/ARP%20Spoofing-Traffic%20Shaping-orange?style=flat-square"/>
+    <img src="https://img.shields.io/badge/ARP_Spoofing-Traffic_Shaping-orange?style=flat-square"/>
   </p>
   <br>
-  <img src="https://img.shields.io/badge/Arecoded%20by-Xbibz%20Official-ff69b4?style=for-the-badge&logo=github"/>
+  <img src="https://img.shields.io/badge/Arecoded_by-Xbibz_Official-ff69b4?style=for-the-badge&logo=github"/>
 </div>
 
 ---
 
-## 📋 Overview
+## Overview
 
 A tool to monitor, analyze and limit the bandwidth (upload/download) of devices on your local network **without physical or administrative access**.  
 Evil Limiter employs [ARP spoofing](https://en.wikipedia.org/wiki/ARP_spoofing) and [traffic shaping](https://en.wikipedia.org/wiki/Traffic_shaping) to throttle the bandwidth of hosts on the network.
 
-> 🔍 **Windows version?** Check out [EvilLimiter for Windows](https://github.com/bitbrute/evillimiter-windows).
+> Windows version? Check out [EvilLimiter for Windows](https://github.com/bitbrute/evillimiter-windows).
 
 ---
 
-## ⚙️ Requirements
+## Requirements
 
 | Requirement | Description |
 |-------------|-------------|
-| 🐧 **OS** | Linux distribution |
-| 🐍 **Python** | Python 3 or greater |
+| **OS** | Linux distribution |
+| **Python** | Python 3 or greater |
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Option 1 — Auto Install (recommended)
 
@@ -63,7 +63,7 @@ Download from [Releases page](https://github.com/XbibzOfficial777/evillimiter/re
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ```bash
 sudo evillimiter
@@ -71,53 +71,53 @@ sudo evillimiter
 
 The tool will automatically resolve required information (network interface, netmask, gateway address, etc.).
 
-### 🛠️ Arguments
+### Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `-h` | 📖 Help message |
-| `-i [Interface]` | 🌐 Network interface |
-| `-g [Gateway IP]` | 🏠 Gateway IP address |
-| `-m [Gateway MAC]` | 📍 Gateway MAC address |
-| `-n [Netmask]` | 🔢 Netmask address |
-| `-f` | 🧹 Flush iptables & tc config |
-| `--colorless` | ⚪ Disable colored output |
+| `-h` | Help message |
+| `-i [Interface]` | Network interface |
+| `-g [Gateway IP]` | Gateway IP address |
+| `-m [Gateway MAC]` | Gateway MAC address |
+| `-n [Netmask]` | Netmask address |
+| `-f` | Flush iptables & tc config |
+| `--colorless` | Disable colored output |
 
-### 📝 Commands
+### Commands
 
 | Command | Description |
 |---------|-------------|
-| `scan (--range [IP])` | 🔍 Scan network for hosts |
-| `hosts (--force)` | 📋 Show scanned hosts |
-| `limit [ID] [Rate]` | ⚡ Limit bandwidth |
-| `block [ID]` | 🚫 Block internet |
-| `free [ID]` | ✅ Unlimit/Unblock host |
-| `add [IP] (--mac [MAC])` | ➕ Add custom host |
-| `monitor (--interval [ms])` | 📊 Monitor bandwidth |
-| `analyze [ID] (--duration [s])` | 📈 Analyze traffic |
-| `watch` | 👀 Watch status |
-| `watch add [ID]` | ➕ Add to watchlist |
-| `watch remove [ID]` | ❌ Remove from watchlist |
-| `watch set [Attr] [Val]` | ⚙️ Change watch settings |
-| `clear` | 🧹 Clear terminal |
-| `quit` | 🚪 Quit |
-| `?` / `help` | ❓ Help |
+| `scan (--range [IP])` | Scan network for hosts |
+| `hosts (--force)` | Show scanned hosts |
+| `limit [ID] [Rate]` | Limit bandwidth |
+| `block [ID]` | Block internet |
+| `free [ID]` | Unlimit/Unblock host |
+| `add [IP] (--mac [MAC])` | Add custom host |
+| `monitor (--interval [ms])` | Monitor bandwidth |
+| `analyze [ID] (--duration [s])` | Analyze traffic |
+| `watch` | Watch status |
+| `watch add [ID]` | Add to watchlist |
+| `watch remove [ID]` | Remove from watchlist |
+| `watch set [Attr] [Val]` | Change watch settings |
+| `clear` | Clear terminal |
+| `quit` | Quit |
+| `?` / `help` | Help |
 
 ---
 
-## ⚠️ Restrictions
+## Restrictions
 
-> 🔴 **IPv4 only** — ARP spoofing requires ARP packets only present on IPv4 networks.
+> [!] IPv4 only — ARP spoofing requires ARP packets only present on IPv4 networks.
 
 ---
 
-## 📜 Disclaimer
+## Disclaimer
 
 Provided "as is" without warranty. You are solely responsible for use of this software.
 
 ---
 
-## 📄 License
+## License
 
 Copyright &copy; 2019 by [bitbrute](https://github.com/bitbrute). Some rights reserved.  
 Licensed under the [MIT License](LICENSE).
@@ -126,7 +126,7 @@ Licensed under the [MIT License](LICENSE).
 
 <div align="center">
   <br>
-  <img src="https://img.shields.io/badge/Recoded%20with%20%E2%9D%A4%EF%B8%8F%20by-Xbibz%20Official-red?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/Recoded_by-Xbibz_Official-red?style=for-the-badge"/>
   <br><br>
   <sub>Evil Limiter — Network Bandwidth Limiter Tool</sub>
 </div>

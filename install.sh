@@ -45,14 +45,14 @@ spinner() {
         printf "\r${CYAN}[${spin:$i:1}]${NC} ${msg}..."
         sleep 0.1
     done
-    printf "\r${GREEN}[✓]${NC} ${msg}... ${GREEN}Done${NC}\n"
+    printf "\r${GREEN}[+]${NC} ${msg}... ${GREEN}Done${NC}\n"
 }
 
 # ── Section header ──
 section() {
     echo ""
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${WHITE}  ⚡ $1${NC}"
+    echo -e "${BOLD}${WHITE}  >> $1${NC}"
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 }
@@ -71,7 +71,7 @@ step() {
 # ── Check root ──
 if [[ $EUID -ne 0 ]]; then
     echo -e "${RED}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${RED}║  ✖ ERROR: Must be run as root (sudo)!   ║${NC}"
+    echo -e "${RED}║  [!] ERROR: Must be run as root (sudo)! ║${NC}"
     echo -e "${RED}║  Usage: sudo curl ... | sudo bash       ║${NC}"
     echo -e "${RED}╚══════════════════════════════════════════╝${NC}"
     exit 1
@@ -97,27 +97,27 @@ cd /tmp
 rm -rf evillimiter-master evillimiter 2>/dev/null
 
 # Download with progress bar
-echo -e "${YELLOW}  [↓] Downloading from GitHub...${NC}"
+echo -e "${YELLOW}  [>] Downloading from GitHub...${NC}"
 curl -#L "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz 2>&1 | while IFS= read -r line; do
     if [[ "$line" =~ [0-9]+% ]]; then
-        echo -ne "\r${CYAN}  [↻] Progress: ${line}${NC}   "
+        echo -ne "\r${CYAN}  [~] Progress: ${line}${NC}   "
     fi
 done
-echo -e "\r${GREEN}  [✓] Download complete!${NC}   "
+echo -e "\r${GREEN}  [+] Download complete!${NC}   "
 
-echo -e "${YELLOW}  [↓] Extracting archive...${NC}"
+echo -e "${YELLOW}  [>] Extracting archive...${NC}"
 tar -xzf evillimiter.tar.gz
 cd "evillimiter-master"
-echo -e "${GREEN}  [✓] Extracted successfully${NC}"
+echo -e "${GREEN}  [+] Extracted successfully${NC}"
 
 section "Installing Python Packages"
 step "Installing dependencies (colorama, scapy, etc)" pip3 install -r requirements.txt
 
 section "Installing Evil Limiter"
-echo -e "${YELLOW}  [⚙] Running setup.py install...${NC}"
+echo -e "${YELLOW}  [*] Running setup.py install...${NC}"
 python3 setup.py install 2>&1 | while IFS= read -r line; do
     if [[ "$line" == *"Finished"* ]]; then
-        echo -e "${GREEN}  [✓] $line${NC}"
+        echo -e "${GREEN}  [+] $line${NC}"
     elif [[ -n "$line" ]]; then
         echo -e "     ${DIM}$line${NC}"
     fi
@@ -131,7 +131,7 @@ rm -rf evillimiter-master evillimiter.tar.gz 2>/dev/null
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   ✅ EVIL LIMITER INSTALLED SUCCESSFULLY!            ║${NC}"
+echo -e "${GREEN}║  [OK] EVIL LIMITER INSTALLED SUCCESSFULLY!            ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╠══════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
