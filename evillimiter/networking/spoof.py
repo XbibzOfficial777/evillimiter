@@ -1,7 +1,8 @@
 import time
 import threading
 import netifaces
-from scapy.all import Ether, ARP, sendp
+import warnings
+from scapy.all import Ether, ARP, sendp, sr1
 from scapy.all import IPv6, ICMPv6ND_NA, ICMPv6NDOptDstLLAddr
 
 from .host import Host
@@ -45,6 +46,7 @@ class ARPSpoofer:
         self._running = False
 
     def _spoof(self) -> None:
+        iteration = 0
         while self._running:
             self._hosts_lock.acquire()
             hosts = self._hosts.copy()
@@ -56,6 +58,18 @@ class ARPSpoofer:
 
                 try:
                     self._send_spoofed_packets(host)
+                except Exception:
+                    pass
+
+            iteration += 1
+            if iteration % 10 == 0:
+                try:
+                    checker = BypassChecker(self.interface, self.gateway_ip, self.gateway_mac, self._own_mac)
+                    results = checker.check_all(list(hosts))
+                    for host in hosts:
+                        status = results.get(host.mac, 0)
+                        if status > 0:
+                            host.bypass_suspicion = status
                 except Exception:
                     pass
 
@@ -147,3 +161,32 @@ class NDPSpoofer:
             / ICMPv6NDOptDstLLAddr(lladdr=self._own_mac)
         )
         sendp(pkt, verbose=0, iface=self.interface)
+
+
+class BypassChecker:
+    def __init__(self, interface: str, gateway_ip: str, gateway_mac: str, own_mac: str) -> None:
+        self.interface = interface
+        self.gateway_ip = gateway_ip
+        self.gateway_mac = gateway_mac
+        self.own_mac = own_mac
+
+    def check_host(self, host: Host) -> int:
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore')
+            gw_pkt = ARP(op=1, pdst=self.gateway_ip)
+            gw_ans = sr1(gw_pkt, timeout=2, verbose=0, iface=self.interface)
+            if gw_ans is not None and gw_ans.hwsrc != self.own_mac:
+                return 2
+
+            host_pkt = ARP(op=1, pdst=host.ip)
+            host_ans = sr1(host_pkt, timeout=2, verbose=0, iface=self.interface)
+            if host_ans is not None and host_ans.hwsrc != host.mac:
+                return 1
+
+        return 0
+
+    def check_all(self, hosts: list[Host]) -> dict[str, int]:
+        results = {}
+        for host in hosts:
+            results[host.mac] = self.check_host(host)
+        return results

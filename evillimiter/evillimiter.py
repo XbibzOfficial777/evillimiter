@@ -13,11 +13,15 @@ import urllib.error
 import netaddr
 import evillimiter.networking.utils as netutils
 from evillimiter import __version__, __description__
+from evillimiter.common import config as ev_config
 from evillimiter.menus.main_menu import MainMenu
 from evillimiter.console.banner import get_main_banner
 from evillimiter.console.io import IO
 from evillimiter.networking.scan import HostScanner
-from evillimiter.networking.spoof import NDPSpoofer
+from evillimiter.networking.spoof import ARPSpoofer, NDPSpoofer
+from evillimiter.networking.limit import Limiter, Direction
+from evillimiter.networking.monitor import BandwidthMonitor
+from evillimiter.networking.utils import BitRate
 
 REPO_API = 'https://api.github.com/repos/XbibzOfficial777/evillimiter/releases/latest'
 CACHE_FILE = '/opt/.evillimiter/.update_cache'
@@ -55,6 +59,14 @@ def parse_arguments() -> argparse.Namespace:
     other_group.add_argument('--colorless', action='store_true', help='disable colored output.')
     other_group.add_argument('-v', '--version', action='version', version=f'evillimiter {__version__}')
     other_group.add_argument('--uninstall', action='store_true', help='completely remove evillimiter and all its files.')
+    other_group.add_argument('--sniffer', action='store_true', help='sniffer mode: monitor without spoofing.')
+
+    nonint_group = parser.add_argument_group('Non-interactive (scripting)')
+    nonint_group.add_argument('--limit-ip', metavar='IP', help='limit bandwidth for an IP (requires --rate).')
+    nonint_group.add_argument('--block-ip', metavar='IP', help='block internet for an IP.')
+    nonint_group.add_argument('--unblock-ip', metavar='IP', help='unblock/unlimit an IP.')
+    nonint_group.add_argument('--rate', metavar='RATE', help='rate for --limit-ip (e.g. 500kbit, 1mbit).')
+    nonint_group.add_argument('--direction', choices=['upload', 'download', 'both'], default='both', help='traffic direction (default: both).')
 
     return parser.parse_args()
 
@@ -134,6 +146,89 @@ def cleanup(interface: str) -> None:
     netutils.disable_ip_forwarding()
 
 
+def _non_interactive(args, init_args) -> None:
+    if not initialize(init_args.interface):
+        return
+
+    iprange = list(netaddr.IPNetwork(f'{init_args.gateway_ip}/{init_args.netmask}'))
+    scanner = HostScanner(init_args.interface, iprange)
+    hosts = scanner.scan()
+
+    if not hosts:
+        IO.error('no hosts discovered.')
+        cleanup(init_args.interface)
+        return
+
+    target = None
+    for h in hosts:
+        if h.ip == getattr(args, 'limit_ip') or h.ip == getattr(args, 'block_ip') or h.ip == getattr(args, 'unblock_ip'):
+            target = h
+            break
+
+    if target is None:
+        IO.error(f'IP not found in scan results.')
+        cleanup(init_args.interface)
+        return
+
+    arp_spoofer = ARPSpoofer(init_args.interface, init_args.gateway_ip, init_args.gateway_mac)
+    limiter = Limiter(init_args.interface)
+    monitor = BandwidthMonitor(init_args.interface, 1)
+
+    arp_spoofer.start()
+    monitor.start()
+
+    direction = Direction.BOTH
+    if args.direction == 'upload':
+        direction = Direction.OUTGOING
+    elif args.direction == 'download':
+        direction = Direction.INCOMING
+
+    if args.limit_ip:
+        if not args.rate:
+            IO.error('--rate is required for --limit-ip.')
+            cleanup(init_args.interface)
+            return
+        try:
+            rate = BitRate.from_rate_string(args.rate)
+        except Exception:
+            IO.error('invalid rate format.')
+            cleanup(init_args.interface)
+            return
+        arp_spoofer.add(target)
+        limiter.limit(target, direction, rate)
+        monitor.add(target)
+        IO.ok(f'{target.ip} limited to {rate} ({args.direction}).')
+        IO.print(f'Press Ctrl+C to stop limiting and exit.')
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+
+    elif args.block_ip:
+        arp_spoofer.add(target)
+        limiter.block(target, direction)
+        monitor.add(target)
+        IO.ok(f'{target.ip} blocked ({args.direction}).')
+        IO.print(f'Press Ctrl+C to unblock and exit.')
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+
+    elif args.unblock_ip:
+        if target.spoofed:
+            arp_spoofer.remove(target)
+        limiter.unlimit(target, Direction.BOTH)
+        monitor.remove(target)
+        IO.ok(f'{target.ip} freed.')
+
+    arp_spoofer.stop()
+    monitor.stop()
+    cleanup(init_args.interface)
+
+
 def _print_startup_info(version: str, interface: str, gateway_ip: str, gateway_mac: str, netmask: str) -> None:
     header = f'{IO.Style.BRIGHT}evillimiter v{version}{IO.Style.RESET_ALL}'
     info_lines = [
@@ -187,6 +282,7 @@ def check_for_update() -> str | None:
 
 def run() -> None:
     version = __version__
+    cfg = ev_config.load_config()
     args = parse_arguments()
 
     IO.initialize(args.colorless)
@@ -228,22 +324,6 @@ def run() -> None:
 
         IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing cache files...')
         shutil.rmtree('/tmp/.evillimiter-install', ignore_errors=True)
-        for d in ['/tmp/evillimiter*']:
-            subprocess.run(['rm', '-rf', d], stderr=subprocess.DEVNULL)
-
-        python_libs = '/usr/local/lib'
-        if os.path.exists(python_libs):
-            for root, dirs, files in os.walk(python_libs):
-                for d in dirs:
-                    if d == '__pycache__' or d.endswith('.egg-info'):
-                        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
-                for f in files:
-                    if f.endswith('.pyc'):
-                        os.remove(os.path.join(root, f))
-
-        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Cleaning pip cache...')
-        subprocess.run(['pip3', 'cache', 'purge'], capture_output=True)
-
         IO.spacer()
         IO.ok('evillimiter has been completely uninstalled.')
         IO.print(f'[{IO.Fore.LIGHTRED_EX}!{IO.Style.RESET_ALL}] Recoded by Xbibz Official')
@@ -259,6 +339,14 @@ def run() -> None:
 
     if init_args is None:
         return
+
+    # Non-interactive mode
+    if args.limit_ip or args.block_ip or args.unblock_ip:
+        _non_interactive(args, init_args)
+        return
+
+    if args.sniffer:
+        cfg['sniffer_mode'] = True
 
     if not initialize(init_args.interface):
         return
@@ -285,7 +373,7 @@ def run() -> None:
     ndp_spoofer = NDPSpoofer(init_args.interface, init_args.gateway_mac, gateway_ipv6) if gateway_ipv6 else None
 
     IO.spacer()
-    menu = MainMenu(version, init_args.interface, init_args.gateway_ip, init_args.gateway_mac, init_args.netmask, initial_hosts=hosts, ndp_spoofer=ndp_spoofer)
+    menu = MainMenu(version, init_args.interface, init_args.gateway_ip, init_args.gateway_mac, init_args.netmask, initial_hosts=hosts, ndp_spoofer=ndp_spoofer, config=cfg)
     menu.start()
     cleanup(init_args.interface)
 

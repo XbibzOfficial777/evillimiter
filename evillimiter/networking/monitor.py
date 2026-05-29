@@ -28,6 +28,11 @@ class BandwidthMonitor:
 
         self._running = False
 
+        self._promiscuous_data: dict[str, int] = {}
+        self._promiscuous_sent: dict[str, int] = {}
+        self._promiscuous_received: dict[str, int] = {}
+        self._promiscuous_lock = threading.Lock()
+
     def add(self, host) -> None:
         with self._host_result_lock:
             if host not in self._host_result_dict:
@@ -97,3 +102,39 @@ class BandwidthMonitor:
         if pkt.haslayer(IPv6):
             return (pkt[IPv6].src, pkt[IPv6].dst)
         return None
+
+    def start_promiscuous(self, duration: int = 0) -> dict:
+        with self._promiscuous_lock:
+            self._promiscuous_data.clear()
+            self._promiscuous_sent.clear()
+            self._promiscuous_received.clear()
+
+        def pkt_handler(pkt):
+            addrs = self._extract_addrs(pkt)
+            if addrs is None:
+                return
+            src, dst = addrs
+            pkt_len = len(pkt)
+            with self._promiscuous_lock:
+                self._promiscuous_sent[src] = self._promiscuous_sent.get(src, 0) + pkt_len
+                self._promiscuous_received[dst] = self._promiscuous_received.get(dst, 0) + pkt_len
+                self._promiscuous_data[src] = self._promiscuous_data.get(src, 0) + pkt_len
+                self._promiscuous_data[dst] = self._promiscuous_data.get(dst, 0) + pkt_len
+
+        if duration == 0:
+            t = threading.Thread(target=lambda: sniff(iface=self.interface, prn=pkt_handler, store=0), daemon=True)
+            t.start()
+            return dict(self._promiscuous_data)
+        else:
+            sniff(iface=self.interface, prn=pkt_handler, store=0, timeout=duration)
+            return dict(self._promiscuous_data)
+
+    def get_promiscuous_summary(self, top_n: int = 10) -> list[tuple[str, int, str]]:
+        result = []
+        with self._promiscuous_lock:
+            for ip, bytes_sent in self._promiscuous_sent.items():
+                result.append((ip, bytes_sent, 'sent'))
+            for ip, bytes_recv in self._promiscuous_received.items():
+                result.append((ip, bytes_recv, 'received'))
+        result.sort(key=lambda x: x[1], reverse=True)
+        return result[:top_n]

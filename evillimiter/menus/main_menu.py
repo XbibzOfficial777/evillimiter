@@ -8,11 +8,13 @@ from terminaltables import SingleTable
 
 import evillimiter.console.shell as shell
 import evillimiter.networking.utils as netutils
+from evillimiter.networking import persist as persist_module
+from evillimiter.common import config as ev_config
 from .menu import CommandMenu
 from evillimiter.networking.utils import BitRate
 from evillimiter.console.io import IO
 from evillimiter.console.prompt import PromptManager
-from evillimiter.console.chart import BarChart
+from evillimiter.console.chart import BarChart, LiveGraph
 from evillimiter.console.banner import get_main_banner
 from evillimiter.networking.host import Host
 from evillimiter.networking.limit import Limiter, Direction
@@ -24,7 +26,7 @@ from evillimiter.networking.flap import Flapper
 
 
 class MainMenu(CommandMenu):
-    def __init__(self, version: str, interface: str, gateway_ip: str, gateway_mac: str, netmask: str, initial_hosts: list | None = None, ndp_spoofer: NDPSpoofer | None = None) -> None:
+    def __init__(self, version: str, interface: str, gateway_ip: str, gateway_mac: str, netmask: str, initial_hosts: list | None = None, ndp_spoofer: NDPSpoofer | None = None, config: dict | None = None) -> None:
         super().__init__()
         self._selected_host: Host | None = None
         self.ndp_spoofer = ndp_spoofer
@@ -50,6 +52,13 @@ class MainMenu(CommandMenu):
 
         free_parser = self.parser.add_subparser('free', self._free_handler)
         free_parser.add_parameter('id')
+
+        self.parser.add_subparser('blockall', self._block_all_handler)
+        self.parser.add_subparser('unblockall', self._unblock_all_handler)
+
+        graph_parser = self.parser.add_subparser('graph', self._graph_handler)
+        graph_parser.add_parameterized_flag('--interval', 'interval')
+        graph_parser.add_parameterized_flag('--duration', 'duration')
 
         add_parser = self.parser.add_subparser('add', self._add_handler)
         add_parser.add_parameter('ip')
@@ -122,6 +131,12 @@ class MainMenu(CommandMenu):
         IO.set_prompt_manager(pm)
         pm.history_store.clear()
 
+        self.config = config or {}
+        if self.config.get('autosave_limits', True) and self.hosts:
+            reapplied = persist_module.reapply_limits(self.hosts, self.limiter, self.arp_spoofer, self.bandwidth_monitor, self.ndp_spoofer)
+            if reapplied > 0:
+                IO.ok(f'{reapplied} persistent limit(s) reapplied.')
+
         self._print_help_reminder()
 
         # start the spoof threads
@@ -185,7 +200,8 @@ class MainMenu(CommandMenu):
             f'{IO.Style.BRIGHT}MAC address{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}IPv6{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}Hostname{IO.Style.RESET_ALL}',
-            f'{IO.Style.BRIGHT}Status{IO.Style.RESET_ALL}'
+            f'{IO.Style.BRIGHT}Status{IO.Style.RESET_ALL}',
+            f'{IO.Style.BRIGHT}Bypass{IO.Style.RESET_ALL}'
         ]]
         
         with self.hosts_lock:
@@ -193,13 +209,21 @@ class MainMenu(CommandMenu):
                 ipv6_display = host.ipv6[0] if host.ipv6 else '-'
                 if len(host.ipv6) > 1:
                     ipv6_display = f'{host.ipv6[0]} ...'
+                suspicion = getattr(host, 'bypass_suspicion', 0)
+                if suspicion == 2:
+                    bypass_str = f'{IO.Fore.RED}BYPASS{IO.Style.RESET_ALL}'
+                elif suspicion == 1:
+                    bypass_str = f'{IO.Fore.LIGHTYELLOW_EX}WARN{IO.Style.RESET_ALL}'
+                else:
+                    bypass_str = '-'
                 table_data.append([
                     f'{IO.Fore.LIGHTYELLOW_EX}{self._get_host_id(host, lock=False)}{IO.Style.RESET_ALL}',
                     host.ip or '-',
                     host.mac,
                     ipv6_display,
                     host.name,
-                    host.pretty_status()
+                    host.pretty_status(),
+                    bypass_str
                 ])
 
         table = SingleTable(table_data, 'Hosts')
@@ -233,6 +257,7 @@ class MainMenu(CommandMenu):
             self.bandwidth_monitor.add(host)
 
             IO.ok(f'{IO.Fore.LIGHTYELLOW_EX}{host.ip}{IO.Style.RESET_ALL} {Direction.pretty_direction(direction)} {IO.Fore.LIGHTRED_EX}limited{IO.Style.RESET_ALL} to {rate}.')
+        self._save_limits()
 
     def _block_handler(self, args) -> None:
         hosts = self._get_hosts_by_ids(args.id)
@@ -248,6 +273,7 @@ class MainMenu(CommandMenu):
                 self.limiter.block(host, direction)
                 self.bandwidth_monitor.add(host)
                 IO.ok(f'{IO.Fore.LIGHTYELLOW_EX}{host.ip}{IO.Style.RESET_ALL} {Direction.pretty_direction(direction)} {IO.Fore.RED}blocked{IO.Style.RESET_ALL}.')
+        self._save_limits()
 
     def _flap_handler(self, args) -> None:
         hosts = self._get_hosts_by_ids(args.id)
@@ -277,6 +303,28 @@ class MainMenu(CommandMenu):
                 self._free_host(host)
                 if self.ndp_spoofer:
                     self.ndp_spoofer.remove(host)
+        self._save_limits()
+
+    def _block_all_handler(self, args) -> None:
+        with self.hosts_lock:
+            hosts = list(self.hosts)
+        for host in hosts:
+            if not host.spoofed:
+                self.arp_spoofer.add(host)
+                if self.ndp_spoofer and host.ipv6:
+                    self.ndp_spoofer.add(host)
+            self.limiter.block(host, Direction.BOTH)
+            self.bandwidth_monitor.add(host)
+        self._save_limits()
+        IO.ok(f'{len(hosts)} host(s) blocked.')
+
+    def _unblock_all_handler(self, args) -> None:
+        with self.hosts_lock:
+            hosts = list(self.hosts)
+        for host in hosts:
+            self._free_host(host)
+        self._save_limits()
+        IO.ok(f'{len(hosts)} host(s) freed.')
 
     def _history_handler(self, args) -> None:
         pm = IO.get_prompt_manager()
@@ -455,6 +503,39 @@ class MainMenu(CommandMenu):
             curses.wrapper(self._monitor_display, interval)
         except curses.error:
             IO.error('monitor error occurred. maybe terminal too small?')
+
+    def _graph_handler(self, args) -> None:
+        interval = 1.0
+        if args.interval:
+            interval = max(0.5, int(args.interval) / 1000)
+        duration = 0
+        if args.duration:
+            duration = max(1, int(args.duration))
+
+        host_results = self._get_bandwidth_results()
+        if not host_results:
+            IO.error('no hosts to graph.')
+            return
+
+        graph = LiveGraph()
+        start = time.time()
+        try:
+            while True:
+                host_results = self._get_bandwidth_results()
+                if not host_results:
+                    break
+                for host, result in host_results:
+                    hid = str(self._get_host_id(host))
+                    graph.add_sample(hid, result.upload_rate.rate, result.download_rate.rate)
+                IO.clear()
+                IO.print(get_main_banner(self.version))
+                IO.print(graph.render())
+                IO.print(f"\nInterval: {interval}s | Ctrl+C to stop")
+                if duration and (time.time() - start) >= duration:
+                    break
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            pass
 
     def _analyze_handler(self, args) -> None:
         hosts = self._get_hosts_by_ids(args.id)
@@ -651,6 +732,8 @@ class MainMenu(CommandMenu):
         limit_len = len('limit [ID1,ID2,...] [rate]')
         ud_len = len('      (--upload) (--download)')
         block_len = len('block [ID1,ID2,...]')
+        blockall_len = len('blockall')
+        unblockall_len = len('unblockall')
         free_len = len('free [ID1,ID2,...]')
         add_len = len('add [IP] (--mac [MAC])')
         mon_len = len('monitor (--interval [time in ms])')
@@ -661,6 +744,7 @@ class MainMenu(CommandMenu):
         watch_rem_len = len('watch remove [ID1,ID2,...]')
         watch_set_len = len('watch set [attr] [value]')
         flap_len = len('flap [ID1,ID2,...]')
+        graph_len = len('graph (--interval [ms]) (--duration [s])')
         history_len = len('history')
         refresh_len = len('refresh')
         sort_len = len('sort [ip|name|mac|id|status]')
@@ -689,6 +773,10 @@ class MainMenu(CommandMenu):
 {y}      (--upload) (--download){r}{s[ud_len:]}{b}e.g.: block 3,2
 {s}      block all --upload{r}
 
+{y}blockall{r}{s[blockall_len:]}blocks internet for ALL hosts.
+
+{y}unblockall{r}{s[unblockall_len:]}frees ALL hosts.
+
 {y}free [ID1,ID2,...]{r}{s[free_len:]}unlimits/unblocks host(s).
 {b}{s}e.g.: free 3
 {s}      free all{r}
@@ -697,6 +785,9 @@ class MainMenu(CommandMenu):
 {y}      (--block [sec]) (--free [sec]){r}{s[ud_len:]}{b}e.g.: flap 6
 {s}      flap 6 --block 3 --free 1
 {s}      flap all --block 5 --free 2{r}
+
+{y}graph (--interval [ms]) (--duration [s]){r}{s[graph_len:]}live bandwidth graph for monitored hosts.
+{b}{s}e.g.: graph --interval 1000 --duration 30{r}
 
 {y}add [IP] (--mac [MAC]){r}{s[add_len:]}adds custom host to host list.
 {s}mac resolved automatically.
@@ -772,6 +863,13 @@ class MainMenu(CommandMenu):
     def _quit_handler(self, args) -> None:
         self.interrupt_handler(False)
         self.stop()
+
+    def _save_limits(self) -> None:
+        if not self.config.get('autosave_limits', True):
+            return
+        with self.limiter._host_dict_lock:
+            host_dict = dict(self.limiter._host_dict)
+        persist_module.save_limits(host_dict)
 
     def _get_host_id(self, host: Host, lock: bool = True) -> int | None:
         ret = None
