@@ -1,9 +1,13 @@
 import re
 import warnings
+import logging
 import netifaces
 from scapy.all import ARP, sr1
+from scapy.config import conf as scapy_conf
 
 import evillimiter.console.shell as shell
+
+scapy_conf.log_level = logging.ERROR
 from evillimiter.common.globals import BIN_TC, BIN_IPTABLES, BIN_IP6TABLES, BIN_SYSCTL, IP_FORWARD_LOC, IP6_FORWARD_LOC
 
 
