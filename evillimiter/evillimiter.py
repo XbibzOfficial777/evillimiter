@@ -1,9 +1,12 @@
 import argparse
 import collections
+import json
 import os
 import platform
 import shutil
 import subprocess
+import urllib.request
+import urllib.error
 
 import netaddr
 import evillimiter.networking.utils as netutils
@@ -13,6 +16,8 @@ from evillimiter.console.banner import get_main_banner
 from evillimiter.console.io import IO
 from evillimiter.networking.scan import HostScanner
 from evillimiter.networking.spoof import NDPSpoofer
+
+REPO_API = 'https://api.github.com/repos/XbibzOfficial777/evillimiter/releases/latest'
 
 
 InitialArguments = collections.namedtuple('InitialArguments', 'interface, gateway_ip, netmask, gateway_mac')
@@ -142,12 +147,32 @@ def _print_startup_info(version: str, interface: str, gateway_ip: str, gateway_m
     IO.print(f'└{border}┘')
 
 
+def check_for_update() -> str | None:
+    try:
+        req = urllib.request.Request(REPO_API, headers={'User-Agent': 'evillimiter', 'Accept': 'application/vnd.github+json'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+        latest = data.get('tag_name', '').lstrip('v')
+        if latest and latest != __version__:
+            return latest
+    except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
+        pass
+    return None
+
+
 def run() -> None:
     version = __version__
     args = parse_arguments()
 
     IO.initialize(args.colorless)
     IO.print(get_main_banner(version))
+
+    update = check_for_update()
+    if update:
+        IO.spacer()
+        IO.print(f'[{IO.Fore.LIGHTYELLOW_EX}*{IO.Style.RESET_ALL}] Update available: v{__version__} -> v{update}')
+        IO.print(f'  curl -s https://raw.githubusercontent.com/XbibzOfficial777/evillimiter/master/install.sh | sudo bash')
+        IO.spacer()
 
     if not is_linux():
         IO.error('run under linux.')

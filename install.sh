@@ -35,17 +35,18 @@ spin() {
     local pid=$2
     local spinstr='-\|/'
     local i=0
+    sleep 0.15
     while kill -0 $pid 2>/dev/null; do
-        printf "\r${YELLOW}  [%c] %s${NC}" "${spinstr:$i:1}" "$msg"
+        printf "\r${YELLOW}  [%c] %s${NC}" "${spinstr:$i:1}" "$msg" >&2
         i=$(( (i+1) % 4 ))
-        sleep 0.1
+        sleep 0.12
     done
     wait $pid
     local rc=$?
     if [[ $rc -eq 0 ]]; then
-        printf "\r${GREEN}  [+] %s${NC}\n" "$msg"
+        printf "\r${GREEN}  [+] %s${NC}\n" "$msg" >&2
     else
-        printf "\r${RED}  [x] %s${NC}\n" "$msg"
+        printf "\r${RED}  [x] %s${NC}\n" "$msg" >&2
         exit 1
     fi
 }
