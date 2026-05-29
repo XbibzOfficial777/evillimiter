@@ -172,7 +172,11 @@ def run() -> None:
             if os.path.exists(path):
                 os.remove(path)
 
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing hidden source directory...')
+        shutil.rmtree('/opt/.evillimiter', ignore_errors=True)
+
         IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing cache files...')
+        shutil.rmtree('/tmp/.evillimiter-install', ignore_errors=True)
         for d in ['/tmp/evillimiter*']:
             subprocess.run(['rm', '-rf', d], stderr=subprocess.DEVNULL)
 

@@ -18,10 +18,10 @@ DIM='\033[2m'
 NC='\033[0m'
 REPO="XbibzOfficial777/evillimiter"
 BRANCH="master"
+HIDDEN_DIR="/opt/.evillimiter"
 
 clear
 
-# ── Banner ──
 echo -e "${RED}"
 echo "███████╗██╗   ██╗██╗██╗       ██╗     ██╗███╗   ███╗██╗████████╗███████╗██████╗ "
 echo "██╔════╝██║   ██║██║██║       ██║     ██║████╗ ████║██║╚══██╔══╝██╔════╝██╔══██╗"
@@ -34,7 +34,6 @@ echo -e "${GREEN}by bitbrute  ~  limit devices on your network :3${NC}"
 echo -e "${RED}recoded by xbibz official${NC}"
 echo ""
 
-# ── Spinner animation ──
 spinner() {
     local pid=$1
     local msg="$2"
@@ -48,7 +47,6 @@ spinner() {
     printf "\r${GREEN}[+]${NC} ${msg}... ${GREEN}Done${NC}\n"
 }
 
-# ── Section header ──
 section() {
     echo ""
     echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -57,7 +55,6 @@ section() {
     echo ""
 }
 
-# ── Step with spinner ──
 step() {
     local msg="$1"
     shift
@@ -68,16 +65,13 @@ step() {
     return $?
 }
 
-# ── Check root ──
 if [[ $EUID -ne 0 ]]; then
     echo -e "${RED}╔══════════════════════════════════════════╗${NC}"
     echo -e "${RED}║  [!] ERROR: Must be run as root (sudo)! ║${NC}"
-    echo -e "${RED}║  Usage: sudo curl ... | sudo bash       ║${NC}"
     echo -e "${RED}╚══════════════════════════════════════════╝${NC}"
     exit 1
 fi
 
-# ── System Info ──
 echo -e "${DIM}┌─────────────────────────────────────┐${NC}"
 echo -e "${DIM}│${NC} ${WHITE}OS:${NC}  $(grep ^PRETTY_NAME /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' || uname -o)"
 echo -e "${DIM}│${NC} ${WHITE}Arch:${NC} $(uname -m)"
@@ -85,7 +79,6 @@ echo -e "${DIM}│${NC} ${WHITE}User:${NC} root"
 echo -e "${DIM}└─────────────────────────────────────┘${NC}"
 echo ""
 
-# ── Installing ──
 section "Preparing System"
 step "Updating package list" apt-get update -y
 
@@ -97,13 +90,14 @@ echo -e "${YELLOW}  [>] Removing old evillimiter (if any)...${NC}"
 pip3 uninstall evillimiter -y 2>/dev/null
 rm -rf /usr/local/lib/python*/dist-packages/evillimiter* /usr/local/bin/evillimiter* 2>/dev/null
 rm -rf /usr/lib/python*/dist-packages/evillimiter* 2>/dev/null
+rm -rf "$HIDDEN_DIR" 2>/dev/null
 echo -e "${GREEN}  [+] Clean${NC}"
 
 section "Downloading Evil Limiter"
-cd /tmp
-rm -rf evillimiter-master evillimiter 2>/dev/null
+rm -rf /tmp/.evillimiter-install 2>/dev/null
+mkdir -p /tmp/.evillimiter-install
+cd /tmp/.evillimiter-install
 
-# Download with progress bar
 echo -e "${YELLOW}  [>] Downloading from GitHub...${NC}"
 curl -#L "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz 2>&1 | while IFS= read -r line; do
     if [[ "$line" =~ [0-9]+% ]]; then
@@ -130,16 +124,21 @@ python3 setup.py install 2>&1 | while IFS= read -r line; do
     fi
 done
 
-# ── Cleanup ──
-section "Cleaning Up"
+section "Securing Installation"
+echo -e "${YELLOW}  [>] Moving source to hidden directory...${NC}"
+cd /tmp/.evillimiter-install
+rm -rf "$HIDDEN_DIR" 2>/dev/null
+mkdir -p "$HIDDEN_DIR"
+cp -r evillimiter-master/* "$HIDDEN_DIR/"
+chmod -R 755 "$HIDDEN_DIR"
+echo -e "${GREEN}  [+] Source stored in $HIDDEN_DIR${NC}"
 
+section "Cleaning Up"
 echo -e "${YELLOW}  [>] Removing temporary files...${NC}"
-cd /tmp
-rm -rf evillimiter-master evillimiter.tar.gz 2>/dev/null
+rm -rf /tmp/.evillimiter-install 2>/dev/null
 echo -e "${GREEN}  [+] Temp files removed${NC}"
 
 echo -e "${YELLOW}  [>] Removing build cache...${NC}"
-rm -rf /tmp/evillimiter* 2>/dev/null
 find /usr/local/lib/python*/dist-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find /usr/local/lib/python*/dist-packages -name "*.pyc" -delete 2>/dev/null
 find /usr/local/lib/python*/dist-packages -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
@@ -149,7 +148,6 @@ echo -e "${YELLOW}  [>] Cleaning pip cache...${NC}"
 pip3 cache purge 2>/dev/null
 echo -e "${GREEN}  [+] Pip cache cleaned${NC}"
 
-# ── Success message ──
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
@@ -157,10 +155,13 @@ echo -e "${GREEN}║  [OK] EVIL LIMITER INSTALLED SUCCESSFULLY!            ║${
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╠══════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   ${WHITE}Run:${NC}                                                          ${GREEN}║${NC}"
-echo -e "${GREEN}║   ${CYAN}sudo evillimiter${NC}                                                ${GREEN}║${NC}"
+echo -e "${GREEN}║   Run:                                                ${GREEN}║${NC}"
+echo -e "${GREEN}║   sudo evillimiter                                    ${GREEN}║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   ${WHITE}Recoded by:${NC} ${RED}Xbibz Official${NC}                                        ${GREEN}║${NC}"
+echo -e "${GREEN}║   Uninstall:                                          ${GREEN}║${NC}"
+echo -e "${GREEN}║   sudo evillimiter --uninstall                        ${GREEN}║${NC}"
+echo -e "${GREEN}║                                                      ║${NC}"
+echo -e "${GREEN}║   Recoded by: Xbibz Official                          ${GREEN}║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""

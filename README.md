@@ -55,11 +55,19 @@ curl -s https://raw.githubusercontent.com/XbibzOfficial777/evillimiter/master/in
 git clone https://github.com/XbibzOfficial777/evillimiter.git
 cd evillimiter
 sudo python3 setup.py install
+cd ..
+mv evillimiter .evillimiter
 ```
 
 ### Option 3 — Download Release
 
 Download from [Releases page](https://github.com/XbibzOfficial777/evillimiter/releases).
+
+## Uninstall
+
+```bash
+sudo evillimiter --uninstall
+```
 
 ---
 
