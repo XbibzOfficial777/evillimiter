@@ -12,6 +12,7 @@ from evillimiter.menus.main_menu import MainMenu
 from evillimiter.console.banner import get_main_banner
 from evillimiter.console.io import IO
 from evillimiter.networking.scan import HostScanner
+from evillimiter.networking.spoof import NDPSpoofer
 
 
 InitialArguments = collections.namedtuple('InitialArguments', 'interface, gateway_ip, netmask, gateway_mac')
@@ -212,6 +213,10 @@ def run() -> None:
     if not initialize(init_args.interface):
         return
 
+    gateway_ipv6 = netutils.get_default_gateway_ipv6(init_args.interface)
+    if gateway_ipv6:
+        IO.ok(f'gateway ipv6: {IO.Fore.LIGHTYELLOW_EX}{gateway_ipv6}{IO.Style.RESET_ALL}')
+
     IO.spacer()
     _print_startup_info(version, init_args.interface, init_args.gateway_ip, init_args.gateway_mac, init_args.netmask)
 
@@ -227,8 +232,10 @@ def run() -> None:
     else:
         IO.ok(f'{len(hosts)} hosts discovered.')
 
+    ndp_spoofer = NDPSpoofer(init_args.interface, init_args.gateway_mac, gateway_ipv6) if gateway_ipv6 else None
+
     IO.spacer()
-    menu = MainMenu(version, init_args.interface, init_args.gateway_ip, init_args.gateway_mac, init_args.netmask, initial_hosts=hosts)
+    menu = MainMenu(version, init_args.interface, init_args.gateway_ip, init_args.gateway_mac, init_args.netmask, initial_hosts=hosts, ndp_spoofer=ndp_spoofer)
     menu.start()
     cleanup(init_args.interface)
 

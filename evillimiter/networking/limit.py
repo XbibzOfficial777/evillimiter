@@ -2,7 +2,7 @@ import threading
 
 import evillimiter.console.shell as shell
 from .host import Host
-from evillimiter.common.globals import BIN_TC, BIN_IPTABLES
+from evillimiter.common.globals import BIN_TC, BIN_IPTABLES, BIN_IP6TABLES
 from .utils import BitRate
 
 
@@ -31,6 +31,9 @@ class Limiter:
             ret = shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -A POSTROUTING -s {host.ip} -j MARK --set-mark {host_ids.upload_id}')
             if ret != 0:
                 raise RuntimeError(f'failed to add iptables upload mark for {host.ip}')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -A POSTROUTING -s {ipv6} -j MARK --set-mark {host_ids.upload_id}')
+
         if (direction & Direction.INCOMING) == Direction.INCOMING:
             ret = shell.execute_suppressed(f'{BIN_TC} class add dev {self.interface} parent 1:0 classid 1:{host_ids.download_id} htb rate {rate} burst {burst}')
             if ret != 0:
@@ -41,6 +44,8 @@ class Limiter:
             ret = shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -A PREROUTING -d {host.ip} -j MARK --set-mark {host_ids.download_id}')
             if ret != 0:
                 raise RuntimeError(f'failed to add iptables download mark for {host.ip}')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -A PREROUTING -d {ipv6} -j MARK --set-mark {host_ids.download_id}')
 
         host.limited = True
 
@@ -54,10 +59,14 @@ class Limiter:
             ret = shell.execute_suppressed(f'{BIN_IPTABLES} -I FORWARD 1 -s {host.ip} -j DROP')
             if ret != 0:
                 raise RuntimeError(f'failed to add iptables forward drop for {host.ip}')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -I FORWARD 1 -s {ipv6} -j DROP')
         if (direction & Direction.INCOMING) == Direction.INCOMING:
             ret = shell.execute_suppressed(f'{BIN_IPTABLES} -I FORWARD 1 -d {host.ip} -j DROP')
             if ret != 0:
                 raise RuntimeError(f'failed to add iptables forward drop for {host.ip}')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -I FORWARD 1 -d {ipv6} -j DROP')
 
         host.blocked = True
 
@@ -129,9 +138,15 @@ class Limiter:
         if (direction & Direction.OUTGOING) == Direction.OUTGOING:
             shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -D POSTROUTING -s {host.ip} -j MARK --set-mark {id_}')
             shell.execute_suppressed(f'{BIN_IPTABLES} -t filter -D FORWARD -s {host.ip} -j DROP')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -D POSTROUTING -s {ipv6} -j MARK --set-mark {id_}')
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t filter -D FORWARD -s {ipv6} -j DROP')
         if (direction & Direction.INCOMING) == Direction.INCOMING:
             shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -D PREROUTING -d {host.ip} -j MARK --set-mark {id_}')
             shell.execute_suppressed(f'{BIN_IPTABLES} -t filter -D FORWARD -d {host.ip} -j DROP')
+            for ipv6 in host.ipv6:
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -D PREROUTING -d {ipv6} -j MARK --set-mark {id_}')
+                shell.execute_suppressed(f'{BIN_IP6TABLES} -t filter -D FORWARD -d {ipv6} -j DROP')
 
 
 class Direction:

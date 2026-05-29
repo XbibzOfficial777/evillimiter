@@ -4,7 +4,7 @@ import netifaces
 from scapy.all import ARP, sr1
 
 import evillimiter.console.shell as shell
-from evillimiter.common.globals import BIN_TC, BIN_IPTABLES, BIN_SYSCTL, IP_FORWARD_LOC
+from evillimiter.common.globals import BIN_TC, BIN_IPTABLES, BIN_IP6TABLES, BIN_SYSCTL, IP_FORWARD_LOC, IP6_FORWARD_LOC
 
 
 def get_default_interface() -> str | None:
@@ -19,10 +19,26 @@ def get_default_gateway() -> str | None:
         return gateways['default'][netifaces.AF_INET][0]
 
 
+def get_default_gateway_ipv6(interface: str) -> str | None:
+    out = shell.output_suppressed(f'ip -6 route show default dev {interface} 2>/dev/null | head -1 | awk \'{{print $3}}\'')
+    return out.strip() or None
+
+
 def get_default_netmask(interface: str) -> str | None:
     ifaddrs = netifaces.ifaddresses(interface)
     if netifaces.AF_INET in ifaddrs:
         return ifaddrs[netifaces.AF_INET][0].get('netmask')
+
+
+def get_default_prefixlen_ipv6(interface: str) -> str | None:
+    ifaddrs = netifaces.ifaddresses(interface)
+    if netifaces.AF_INET6 in ifaddrs:
+        for addr in ifaddrs[netifaces.AF_INET6]:
+            if not addr['addr'].startswith('fe80'):
+                return addr.get('netmask')
+    if netifaces.AF_INET6 in ifaddrs:
+        return ifaddrs[netifaces.AF_INET6][0].get('netmask')
+    return None
 
 
 def get_mac_by_ip(interface: str, address: str) -> str | None:
@@ -33,6 +49,29 @@ def get_mac_by_ip(interface: str, address: str) -> str | None:
 
     if response is not None:
         return response.hwsrc
+
+
+def get_mac_by_ipv6(interface: str, address: str) -> str | None:
+    shell.execute_suppressed(f'ping6 -c 1 -W 1 -I {interface} {address} 2>/dev/null')
+    out = shell.output_suppressed(f'ip -6 neigh get {address} dev {interface} 2>/dev/null')
+    if 'lladdr' in out:
+        parts = out.split()
+        for i, p in enumerate(parts):
+            if p == 'lladdr' and i + 1 < len(parts):
+                return parts[i + 1].lower()
+    return None
+
+
+def get_ndp_cache(interface: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    out = shell.output_suppressed(f'ip -6 neigh show dev {interface} 2>/dev/null')
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[1] == 'lladdr':
+            ip = parts[0].lower()
+            mac = parts[2].lower()
+            result[ip] = mac
+    return result
 
 
 def exists_interface(interface: str) -> bool:
@@ -49,6 +88,9 @@ def flush_network_settings(interface: str) -> None:
     shell.execute_suppressed(f'{BIN_IPTABLES} -F')
     shell.execute_suppressed(f'{BIN_IPTABLES} -X')
 
+    shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -F')
+    shell.execute_suppressed(f'{BIN_IP6TABLES} -F')
+
     shell.execute_suppressed(f'{BIN_TC} qdisc del dev {interface} root')
 
 
@@ -57,6 +99,15 @@ def validate_ip_address(ip: str) -> bool:
     if not match:
         return False
     return all(0 <= int(octet) <= 255 for octet in match.groups())
+
+
+def validate_ipv6_address(ip: str) -> bool:
+    try:
+        import ipaddress
+        ipaddress.IPv6Address(ip)
+        return True
+    except ValueError:
+        return False
 
 
 def validate_mac_address(mac: str) -> bool:
@@ -72,11 +123,15 @@ def delete_qdisc_root(interface: str) -> int:
 
 
 def enable_ip_forwarding() -> bool:
-    return shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=1') == 0
+    ok = shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=1') == 0
+    shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP6_FORWARD_LOC}=1')
+    return ok
 
 
 def disable_ip_forwarding() -> bool:
-    return shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=0') == 0
+    ok = shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=0') == 0
+    shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP6_FORWARD_LOC}=0')
+    return ok
 
 
 def cleanup_all() -> None:
@@ -93,7 +148,11 @@ def cleanup_all() -> None:
     shell.execute_suppressed(f'{BIN_IPTABLES} -F')
     shell.execute_suppressed(f'{BIN_IPTABLES} -X')
 
+    shell.execute_suppressed(f'{BIN_IP6TABLES} -t mangle -F')
+    shell.execute_suppressed(f'{BIN_IP6TABLES} -F')
+
     shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=0')
+    shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP6_FORWARD_LOC}=0')
 
 
 class ValueConverter:

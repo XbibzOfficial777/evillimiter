@@ -1,5 +1,7 @@
 BROADCAST = 'ff:ff:ff:ff:ff:ff'
 BIN_TC = 'tc'
 BIN_IPTABLES = 'iptables'
+BIN_IP6TABLES = 'ip6tables'
 BIN_SYSCTL = 'sysctl'
 IP_FORWARD_LOC = 'net.ipv4.ip_forward'
+IP6_FORWARD_LOC = 'net.ipv6.conf.all.forwarding'

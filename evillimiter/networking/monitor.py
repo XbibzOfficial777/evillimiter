@@ -2,6 +2,7 @@ import time
 import threading
 from scapy.sendrecv import sniff
 from scapy.layers.inet import IP
+from scapy.layers.inet6 import IPv6
 
 from .utils import ValueConverter, BitRate, ByteValue
 
@@ -71,17 +72,28 @@ class BandwidthMonitor:
 
     def _sniff(self) -> None:
         def pkt_handler(pkt):
-            if pkt.haslayer(IP):
-                with self._host_result_lock:
-                    for host in self._host_result_dict:
-                        result = self._host_result_dict[host]['result']
-                        if host.ip == pkt[IP].src:
-                            result.upload_total_size += len(pkt)
-                            result.upload_total_count += 1
-                            result._upload_temp_size += len(pkt)
-                        elif host.ip == pkt[IP].dst:
-                            result.download_total_size += len(pkt)
-                            result.download_total_count += 1
-                            result._download_temp_size += len(pkt)
+            addrs = self._extract_addrs(pkt)
+            if addrs is None:
+                return
+            src, dst = addrs
+            with self._host_result_lock:
+                for host in self._host_result_dict:
+                    result = self._host_result_dict[host]['result']
+                    if src in (host.ip, *host.ipv6):
+                        result.upload_total_size += len(pkt)
+                        result.upload_total_count += 1
+                        result._upload_temp_size += len(pkt)
+                    elif dst in (host.ip, *host.ipv6):
+                        result.download_total_size += len(pkt)
+                        result.download_total_count += 1
+                        result._download_temp_size += len(pkt)
 
         sniff(iface=self.interface, prn=pkt_handler, stop_filter=lambda pkt: not self._running, store=0)
+
+    @staticmethod
+    def _extract_addrs(pkt):
+        if pkt.haslayer(IP):
+            return (pkt[IP].src, pkt[IP].dst)
+        if pkt.haslayer(IPv6):
+            return (pkt[IPv6].src, pkt[IPv6].dst)
+        return None

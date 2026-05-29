@@ -16,7 +16,7 @@ from evillimiter.console.chart import BarChart
 from evillimiter.console.banner import get_main_banner
 from evillimiter.networking.host import Host
 from evillimiter.networking.limit import Limiter, Direction
-from evillimiter.networking.spoof import ARPSpoofer
+from evillimiter.networking.spoof import ARPSpoofer, NDPSpoofer
 from evillimiter.networking.scan import HostScanner
 from evillimiter.networking.monitor import BandwidthMonitor
 from evillimiter.networking.watch import HostWatcher
@@ -24,9 +24,10 @@ from evillimiter.networking.flap import Flapper
 
 
 class MainMenu(CommandMenu):
-    def __init__(self, version: str, interface: str, gateway_ip: str, gateway_mac: str, netmask: str, initial_hosts: list | None = None) -> None:
+    def __init__(self, version: str, interface: str, gateway_ip: str, gateway_mac: str, netmask: str, initial_hosts: list | None = None, ndp_spoofer: NDPSpoofer | None = None) -> None:
         super().__init__()
         self._selected_host: Host | None = None
+        self.ndp_spoofer = ndp_spoofer
         self.prompt = f'{IO.Style.BRIGHT}Main{IO.Style.RESET_ALL} >>> '
         self.parser.add_subparser('clear', self._clear_handler)
 
@@ -123,8 +124,10 @@ class MainMenu(CommandMenu):
 
         self._print_help_reminder()
 
-        # start the spoof thread
+        # start the spoof threads
         self.arp_spoofer.start()
+        if self.ndp_spoofer:
+            self.ndp_spoofer.start()
         # start the bandwidth monitor thread
         self.bandwidth_monitor.start()
         # start the host watch thread
@@ -144,8 +147,12 @@ class MainMenu(CommandMenu):
                 self.arp_spoofer.remove(host)
                 self.bandwidth_monitor.remove(host)
                 self.host_watcher.remove(host)
+                if self.ndp_spoofer:
+                    self.ndp_spoofer.remove(host)
 
         self.arp_spoofer.stop()
+        if self.ndp_spoofer:
+            self.ndp_spoofer.stop()
         self.bandwidth_monitor.stop()
 
     def _scan_handler(self, args) -> None:
@@ -176,16 +183,21 @@ class MainMenu(CommandMenu):
             f'{IO.Style.BRIGHT}ID{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}IP address{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}MAC address{IO.Style.RESET_ALL}',
+            f'{IO.Style.BRIGHT}IPv6{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}Hostname{IO.Style.RESET_ALL}',
             f'{IO.Style.BRIGHT}Status{IO.Style.RESET_ALL}'
         ]]
         
         with self.hosts_lock:
             for host in self.hosts:
+                ipv6_display = host.ipv6[0] if host.ipv6 else '-'
+                if len(host.ipv6) > 1:
+                    ipv6_display = f'{host.ipv6[0]} ...'
                 table_data.append([
                     f'{IO.Fore.LIGHTYELLOW_EX}{self._get_host_id(host, lock=False)}{IO.Style.RESET_ALL}',
-                    host.ip,
+                    host.ip or '-',
                     host.mac,
+                    ipv6_display,
                     host.name,
                     host.pretty_status()
                 ])
@@ -215,6 +227,8 @@ class MainMenu(CommandMenu):
 
         for host in hosts:
             self.arp_spoofer.add(host)
+            if self.ndp_spoofer and host.ipv6:
+                self.ndp_spoofer.add(host)
             self.limiter.limit(host, direction, rate)
             self.bandwidth_monitor.add(host)
 
@@ -228,6 +242,8 @@ class MainMenu(CommandMenu):
             for host in hosts:
                 if not host.spoofed:
                     self.arp_spoofer.add(host)
+                    if self.ndp_spoofer and host.ipv6:
+                        self.ndp_spoofer.add(host)
 
                 self.limiter.block(host, direction)
                 self.bandwidth_monitor.add(host)
@@ -248,6 +264,8 @@ class MainMenu(CommandMenu):
         for host in hosts:
             if not host.spoofed:
                 self.arp_spoofer.add(host)
+                if self.ndp_spoofer and host.ipv6:
+                    self.ndp_spoofer.add(host)
             self.flapper.start(host, block_time, free_time)
             self.bandwidth_monitor.add(host)
             IO.ok(f'{IO.Fore.LIGHTYELLOW_EX}{host.ip}{IO.Style.RESET_ALL} flapping ({block_time}s block / {free_time}s free).')
@@ -257,6 +275,8 @@ class MainMenu(CommandMenu):
         if hosts is not None and len(hosts) > 0:
             for host in hosts:
                 self._free_host(host)
+                if self.ndp_spoofer:
+                    self.ndp_spoofer.remove(host)
 
     def _history_handler(self, args) -> None:
         pm = IO.get_prompt_manager()
@@ -286,7 +306,7 @@ class MainMenu(CommandMenu):
 
         with self.hosts_lock:
             if field == 'ip':
-                self.hosts.sort(key=lambda h: [int(o) for o in h.ip.split('.')], reverse=reverse)
+                self.hosts.sort(key=lambda h: [int(o) for o in h.ip.split('.')] if h.ip else [0], reverse=reverse)
             elif field == 'name':
                 self.hosts.sort(key=lambda h: h.name or '', reverse=reverse)
             elif field == 'mac':
@@ -324,7 +344,9 @@ class MainMenu(CommandMenu):
 
     def _add_handler(self, args) -> None:
         ip = args.ip
-        if not netutils.validate_ip_address(ip):
+        is_ipv6 = netutils.validate_ipv6_address(ip)
+
+        if not is_ipv6 and not netutils.validate_ip_address(ip):
             IO.error('invalid ip address.')
             return
 
@@ -334,7 +356,10 @@ class MainMenu(CommandMenu):
                 IO.error('invalid mac address.')
                 return
         else:
-            mac = netutils.get_mac_by_ip(self.interface, ip)
+            if is_ipv6:
+                mac = netutils.get_mac_by_ipv6(self.interface, ip)
+            else:
+                mac = netutils.get_mac_by_ip(self.interface, ip)
             if mac is None:
                 IO.error('unable to resolve mac address. specify manually (--mac).')
                 return
@@ -346,7 +371,10 @@ class MainMenu(CommandMenu):
         except socket.herror:
             pass
 
-        host = Host(ip, mac, name)
+        if is_ipv6:
+            host = Host('', mac, name, ipv6=[ip])
+        else:
+            host = Host(ip, mac, name)
 
         with self.hosts_lock:
             if host in self.hosts:
@@ -829,6 +857,8 @@ class MainMenu(CommandMenu):
         self.flapper.stop(host)
         if host.spoofed:
             self.arp_spoofer.remove(host)
+            if self.ndp_spoofer:
+                self.ndp_spoofer.remove(host)
         self.limiter.unlimit(host, Direction.BOTH)
         self.bandwidth_monitor.remove(host)
         self.host_watcher.remove(host)
