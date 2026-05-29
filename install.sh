@@ -135,18 +135,28 @@ echo -e "${GREEN}  [+] Source stored in $HIDDEN_DIR${NC}"
 
 section "Cleaning Up"
 echo -e "${YELLOW}  [>] Removing temporary files...${NC}"
-rm -rf /tmp/.evillimiter-install 2>/dev/null
+rm -rf /tmp/.evillimiter-install /tmp/evillimiter* /tmp/pip-* 2>/dev/null
 echo -e "${GREEN}  [+] Temp files removed${NC}"
 
 echo -e "${YELLOW}  [>] Removing build cache...${NC}"
-find /usr/local/lib/python*/dist-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
-find /usr/local/lib/python*/dist-packages -name "*.pyc" -delete 2>/dev/null
-find /usr/local/lib/python*/dist-packages -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
+find /usr/local/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+find /usr/local/lib -name "*.pyc" -delete 2>/dev/null
+find /usr/local/lib -name "*.pyo" -delete 2>/dev/null
+find /usr/local/lib -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
+find /usr/local/lib -name "*.egg" -type d -exec rm -rf {} + 2>/dev/null
+find /opt/.evillimiter -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+find /opt/.evillimiter -name "*.pyc" -delete 2>/dev/null
 echo -e "${GREEN}  [+] Cache cleared${NC}"
 
 echo -e "${YELLOW}  [>] Cleaning pip cache...${NC}"
+rm -rf /root/.cache/pip/* ~/.cache/pip/* 2>/dev/null
 pip3 cache purge 2>/dev/null
 echo -e "${GREEN}  [+] Pip cache cleaned${NC}"
+
+echo -e "${YELLOW}  [>] Cleaning apt cache...${NC}"
+apt-get autoremove -y 2>/dev/null
+apt-get clean 2>/dev/null
+echo -e "${GREEN}  [+] Apt cache cleaned${NC}"
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
