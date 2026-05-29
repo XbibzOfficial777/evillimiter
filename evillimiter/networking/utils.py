@@ -1,119 +1,115 @@
 import re
+import warnings
 import netifaces
-from scapy.all import ARP, sr1 # pylint: disable=no-name-in-module
+from scapy.all import ARP, sr1
 
 import evillimiter.console.shell as shell
 from evillimiter.common.globals import BIN_TC, BIN_IPTABLES, BIN_SYSCTL, IP_FORWARD_LOC
 
 
-def get_default_interface():
-    """
-    Returns the default IPv4 interface
-    """
+def get_default_interface() -> str | None:
     gateways = netifaces.gateways()
     if 'default' in gateways and netifaces.AF_INET in gateways['default']:
         return gateways['default'][netifaces.AF_INET][1]
 
 
-def get_default_gateway():
-    """
-    Returns the default IPv4 gateway address
-    """
+def get_default_gateway() -> str | None:
     gateways = netifaces.gateways()
     if 'default' in gateways and netifaces.AF_INET in gateways['default']:
         return gateways['default'][netifaces.AF_INET][0]
 
 
-def get_default_netmask(interface):
-    """
-    Returns the default IPv4 netmask associated to an interface 
-    """
+def get_default_netmask(interface: str) -> str | None:
     ifaddrs = netifaces.ifaddresses(interface)
     if netifaces.AF_INET in ifaddrs:
         return ifaddrs[netifaces.AF_INET][0].get('netmask')
 
 
-def get_mac_by_ip(interface, address):
-    """
-    Resolves hardware address from IP by sending ARP request
-    and receiving ARP response
-    """
-    # ARP packet with operation 1 (who-is)
+def get_mac_by_ip(interface: str, address: str) -> str | None:
     packet = ARP(op=1, pdst=address)
-    response = sr1(packet, timeout=3, verbose=0, iface=interface)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=SyntaxWarning)
+        response = sr1(packet, timeout=3, verbose=0, iface=interface)
 
     if response is not None:
         return response.hwsrc
 
 
-def exists_interface(interface):
-    """
-    Determines whether or not a given interface exists
-    """
+def exists_interface(interface: str) -> bool:
     return interface in netifaces.interfaces()
 
 
-def flush_network_settings(interface):
-    """
-    Flushes all iptable rules and traffic control entries
-    related to the given interface
-    """
-    # reset default policy
-    shell.execute_suppressed('{} -P INPUT ACCEPT'.format(BIN_IPTABLES))
-    shell.execute_suppressed('{} -P OUTPUT ACCEPT'.format(BIN_IPTABLES))
-    shell.execute_suppressed('{} -P FORWARD ACCEPT'.format(BIN_IPTABLES))
+def flush_network_settings(interface: str) -> None:
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P INPUT ACCEPT')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P OUTPUT ACCEPT')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P FORWARD ACCEPT')
 
-    # flush all chains in all tables (including user-defined)
-    shell.execute_suppressed('{} -t mangle -F'.format(BIN_IPTABLES))
-    shell.execute_suppressed('{} -t nat -F'.format(BIN_IPTABLES))
-    shell.execute_suppressed('{} -F'.format(BIN_IPTABLES))
-    shell.execute_suppressed('{} -X'.format(BIN_IPTABLES))
+    shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -t nat -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -X')
 
-    # delete root qdisc for given interface
-    shell.execute_suppressed('{} qdisc del dev {} root'.format(BIN_TC, interface))
+    shell.execute_suppressed(f'{BIN_TC} qdisc del dev {interface} root')
 
 
-def validate_ip_address(ip):
-    return re.match(r'^(\d{1,3}\.){3}(\d{1,3})$', ip) is not None
+def validate_ip_address(ip: str) -> bool:
+    match = re.match(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$', ip)
+    if not match:
+        return False
+    return all(0 <= int(octet) <= 255 for octet in match.groups())
 
 
-def validate_mac_address(mac):
+def validate_mac_address(mac: str) -> bool:
     return re.match(r'^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$', mac) is not None
 
 
-def create_qdisc_root(interface):
-    """
-    Creates a root htb qdisc in traffic control for a given interface
-    """
-    return shell.execute_suppressed('{} qdisc add dev {} root handle 1:0 htb'.format(BIN_TC, interface)) == 0
+def create_qdisc_root(interface: str) -> bool:
+    return shell.execute_suppressed(f'{BIN_TC} qdisc add dev {interface} root handle 1:0 htb') == 0
 
 
-def delete_qdisc_root(interface):
-    return shell.execute_suppressed('{} qdisc del dev {} root handle 1:0 htb'.format(BIN_TC, interface))
+def delete_qdisc_root(interface: str) -> int:
+    return shell.execute_suppressed(f'{BIN_TC} qdisc del dev {interface} root handle 1:0 htb')
 
 
-def enable_ip_forwarding():
-    return shell.execute_suppressed('{} -w {}=1'.format(BIN_SYSCTL, IP_FORWARD_LOC)) == 0
+def enable_ip_forwarding() -> bool:
+    return shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=1') == 0
 
 
-def disable_ip_forwarding():
-    return shell.execute_suppressed('{} -w {}=0'.format(BIN_SYSCTL, IP_FORWARD_LOC)) == 0
+def disable_ip_forwarding() -> bool:
+    return shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=0') == 0
+
+
+def cleanup_all() -> None:
+    for iface in netifaces.interfaces():
+        if iface == 'lo':
+            continue
+        shell.execute_suppressed(f'{BIN_TC} qdisc del dev {iface} root')
+
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P INPUT ACCEPT')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P OUTPUT ACCEPT')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -P FORWARD ACCEPT')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -t mangle -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -t nat -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -F')
+    shell.execute_suppressed(f'{BIN_IPTABLES} -X')
+
+    shell.execute_suppressed(f'{BIN_SYSCTL} -w {IP_FORWARD_LOC}=0')
 
 
 class ValueConverter:
     @staticmethod
-    def byte_to_bit(v):
+    def byte_to_bit(v: int) -> int:
         return v * 8
 
 
-class BitRate(object):
-    def __init__(self, rate=0):
+class BitRate:
+    def __init__(self, rate: int = 0) -> None:
         self.rate = rate
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         counter = 0
         r = self.rate
 
@@ -131,32 +127,32 @@ class BitRate(object):
                     unit = 'mbit'
                 elif counter == 3:
                     unit = 'gbit'
-                
-                return '{}{}'.format(int(r), unit)
-            
+
+                return f'{int(r)}{unit}'
+
             if counter > 3:
                 raise Exception('Bitrate limit exceeded')
 
-    def __mul__(self, other):
+    def __mul__(self, other: object) -> 'BitRate':
         if isinstance(other, BitRate):
             return BitRate(int(self.rate * other.rate))
         return BitRate(int(self.rate * other))
 
-    def fmt(self, fmt):
+    def fmt(self, fmt: str) -> str:
         string = self.__str__()
-        end = len([_ for _ in string if _.isdigit()])
+        end = len([c for c in string if c.isdigit()])
         num = int(string[:end])
-    
-        return '{}{}'.format(fmt % num, string[end:])
+
+        return f'{fmt % num}{string[end:]}'
 
     @classmethod
-    def from_rate_string(cls, rate_string):
+    def from_rate_string(cls, rate_string: str) -> 'BitRate':
         return cls(BitRate._bit_value(rate_string))
 
     @staticmethod
-    def _bit_value(rate_string):
-        number = 0  # rate number
-        offset = 0  # string offset
+    def _bit_value(rate_string: str) -> int:
+        number = 0
+        offset = 0
 
         for c in rate_string:
             if c.isdigit():
@@ -179,14 +175,14 @@ class BitRate(object):
             raise Exception('Invalid bitrate')
 
 
-class ByteValue(object):
-    def __init__(self, value=0):
+class ByteValue:
+    def __init__(self, value: int = 0) -> None:
         self.value = value
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__str__()
 
-    def __str__(self):
+    def __str__(self) -> str:
         counter = 0
         v = self.value
 
@@ -206,50 +202,50 @@ class ByteValue(object):
                     unit = 'gb'
                 elif counter == 4:
                     unit = 'tb'
-                
-                return '{}{}'.format(int(v), unit)
-            
+
+                return f'{int(v)}{unit}'
+
             if counter > 3:
                 raise Exception('Byte value limit exceeded')
 
-    def __int__(self):
+    def __int__(self) -> int:
         return self.value
 
-    def __add__(self, other):
+    def __add__(self, other: object) -> 'ByteValue':
         if isinstance(other, ByteValue):
             return ByteValue(int(self.value + other.value))
         return ByteValue(int(self.value + other))
 
-    def __sub__(self, other):
+    def __sub__(self, other: object) -> 'ByteValue':
         if isinstance(other, ByteValue):
             return ByteValue(int(self.value - other.value))
         return ByteValue(int(self.value - other))
 
-    def __mul__(self, other):
+    def __mul__(self, other: object) -> 'ByteValue':
         if isinstance(other, ByteValue):
             return ByteValue(int(self.value * other.value))
         return ByteValue(int(self.value * other))
 
-    def __ge__(self, other):
+    def __ge__(self, other: object) -> bool:
         if isinstance(other, ByteValue):
             return self.value >= other.value
         return self.value >= other
 
-    def fmt(self, fmt):
+    def fmt(self, fmt: str) -> str:
         string = self.__str__()
-        end = len([_ for _ in string if _.isdigit()])
+        end = len([c for c in string if c.isdigit()])
         num = int(string[:end])
 
-        return '{}{}'.format(fmt % num, string[end:])
+        return f'{fmt % num}{string[end:]}'
 
     @classmethod
-    def from_byte_string(cls, byte_string):
+    def from_byte_string(cls, byte_string: str) -> 'ByteValue':
         return cls(ByteValue._byte_value(byte_string))
 
     @staticmethod
-    def _byte_value(byte_string):
-        number = 0  # rate number
-        offset = 0  # string offset
+    def _byte_value(byte_string: str) -> int:
+        number = 0
+        offset = 0
 
         for c in byte_string:
             if c.isdigit():

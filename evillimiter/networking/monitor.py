@@ -1,13 +1,14 @@
 import time
 import threading
-from scapy.all import sniff, IP # pylint: disable=no-name-in-module
+from scapy.sendrecv import sniff
+from scapy.layers.inet import IP
 
 from .utils import ValueConverter, BitRate, ByteValue
 
 
-class BandwidthMonitor(object):
-    class BandwidthMonitorResult(object):
-        def __init__(self):
+class BandwidthMonitor:
+    class BandwidthMonitorResult:
+        def __init__(self) -> None:
             self.upload_rate = BitRate()
             self.upload_total_size = ByteValue()
             self.upload_total_count = 0
@@ -18,39 +19,39 @@ class BandwidthMonitor(object):
             self._upload_temp_size = ByteValue()
             self._download_temp_size = ByteValue()
 
-    def __init__(self, interface, interval):
+    def __init__(self, interface: str, interval: int) -> None:
         self.interface = interface
 
-        self._host_result_dict = {}
+        self._host_result_dict: dict = {}
         self._host_result_lock = threading.Lock()
 
         self._running = False
 
-    def add(self, host):
+    def add(self, host) -> None:
         with self._host_result_lock:
             if host not in self._host_result_dict:
-                self._host_result_dict[host] = { 'result': BandwidthMonitor.BandwidthMonitorResult(), 'last_now': time.time() }
+                self._host_result_dict[host] = {'result': BandwidthMonitor.BandwidthMonitorResult(), 'last_now': time.time()}
 
-    def remove(self, host):
+    def remove(self, host) -> None:
         with self._host_result_lock:
             self._host_result_dict.pop(host, None)
 
-    def replace(self, old_host, new_host):
+    def replace(self, old_host, new_host) -> None:
         with self._host_result_lock:
             if old_host in self._host_result_dict:
                 self._host_result_dict[new_host] = self._host_result_dict[old_host]
                 del self._host_result_dict[old_host]
 
-    def start(self):
+    def start(self) -> None:
         if self._running:
             return
 
-        sniff_thread = threading.Thread(target=self._sniff, args=[], daemon=True)
+        sniff_thread = threading.Thread(target=self._sniff, daemon=True)
         sniff_thread.start()
 
         self._running = True
 
-    def stop(self):
+    def stop(self) -> None:
         self._running = False
 
     def get(self, host):
@@ -68,7 +69,7 @@ class BandwidthMonitor(object):
                 self._host_result_dict[host]['last_now'] = time.time()
                 return result
 
-    def _sniff(self):
+    def _sniff(self) -> None:
         def pkt_handler(pkt):
             if pkt.haslayer(IP):
                 with self._host_result_lock:
@@ -82,9 +83,5 @@ class BandwidthMonitor(object):
                             result.download_total_size += len(pkt)
                             result.download_total_count += 1
                             result._download_temp_size += len(pkt)
-                        
-        def stop_filter(pkt):
-            return not self._running
 
-        sniff(iface=self.interface, prn=pkt_handler, stop_filter=stop_filter, store=0)
-    
+        sniff(iface=self.interface, prn=pkt_handler, stop_filter=lambda pkt: not self._running, store=0)

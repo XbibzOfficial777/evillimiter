@@ -1,7 +1,7 @@
 import os
-import re
 from setuptools import setup, find_packages, Command
 
+from evillimiter import __version__, __description__
 
 
 class CleanCommand(Command):
@@ -17,33 +17,13 @@ class CleanCommand(Command):
         os.system('rm -vrf ./build ./dist ./*.pyc ./*.pyo ./*.pyd ./*.tgz ./*.egg-info `find -type d -name __pycache__`')
 
 
-def get_init_content():
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'evillimiter', '__init__.py'), 'r') as f:
-        return f.read()
-
-
-def get_version():
-    version_match = re.search(r'^__version__ = [\'"](\d\.\d\.\d)[\'"]', get_init_content(), re.M)
-    if version_match:
-        return version_match.group(1)
-    
-    raise RuntimeError('Unable to locate version string.')
-
-def get_description():
-    desc_match = re.search(r'^__description__ = [\'"]((.)*)[\'"]', get_init_content(), re.M)
-    if desc_match:
-        return desc_match.group(1)
-    
-    raise RuntimeError('Unable to locate description string.')
-
-
 NAME = 'evillimiter'
 AUTHOR = 'bitbrute'
 AUTHOR_EMAIL = 'bitbrute@gmail.com'
 LICENSE = 'MIT'
-VERSION = get_version()
+VERSION = __version__
 URL = 'https://github.com/bitbrute/evillimiter'
-DESCRIPTION = get_description()
+DESCRIPTION = __description__
 KEYWORDS = ["evillimiter", "limit", "bandwidth", "network"]
 PACKAGES = find_packages()
 INCLUDE_PACKAGE_DATA = True
@@ -52,7 +32,7 @@ CLASSIFIERS = ['Development Status :: 3 - Alpha',
                'Environment :: Console',
                'Intended Audience :: End Users/Desktop',
                'Intended Audience :: System Administrators',
-               'Intended Audience :: Developers'
+               'Intended Audience :: Developers',
                'License :: OSI Approved :: MIT License',
                'Natural Language :: English',
                'Operating System :: Unix',

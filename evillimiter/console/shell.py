@@ -1,28 +1,28 @@
 import os
 import subprocess
-from evillimiter.console.io import IO
+
 
 DEVNULL = open(os.devnull, 'w')
 
 
-def execute(command, root=True):
-    return subprocess.call('sudo ' + command if root else command, shell=True)
+def execute(command: str, root: bool = True) -> int:
+    return subprocess.call(command, shell=True)
 
 
-def execute_suppressed(command, root=True):
-    return subprocess.call('sudo ' + command if root else command, shell=True, stdout=DEVNULL, stderr=DEVNULL)
+def execute_suppressed(command: str, root: bool = True) -> int:
+    return subprocess.call(command, shell=True, stdout=DEVNULL, stderr=DEVNULL)
 
 
-def output(command, root=True):
-    return subprocess.check_output('sudo ' + command if root else command, shell=True).decode('utf-8')
+def output(command: str, root: bool = True) -> str:
+    return subprocess.check_output(command, shell=True).decode('utf-8')
 
 
-def output_suppressed(command, root=True):
-    return subprocess.check_output('sudo ' + command if root else command, shell=True, stderr=DEVNULL).decode('utf-8')
+def output_suppressed(command: str, root: bool = True) -> str:
+    return subprocess.check_output(command, shell=True, stderr=DEVNULL).decode('utf-8')
 
 
-def locate_bin(name):
+def locate_bin(name: str) -> str:
     try:
-        return output_suppressed('which {}'.format(name)).replace('\n', '')
+        return output_suppressed(f'which {name}').replace('\n', '')
     except subprocess.CalledProcessError:
-        IO.error('missing util: {}, check your PATH'.format(name))
+        raise FileNotFoundError(f'missing util: {name}, check your PATH')
