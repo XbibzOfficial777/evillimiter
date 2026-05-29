@@ -21,6 +21,13 @@ def output_suppressed(command: str, root: bool = True) -> str:
     return subprocess.check_output(command, shell=True, stderr=DEVNULL).decode('utf-8')
 
 
+def output_safe(command: str, root: bool = True) -> str:
+    try:
+        return subprocess.check_output(command, shell=True, stderr=DEVNULL).decode('utf-8')
+    except subprocess.CalledProcessError:
+        return ''
+
+
 def locate_bin(name: str) -> str:
     try:
         return output_suppressed(f'which {name}').replace('\n', '')

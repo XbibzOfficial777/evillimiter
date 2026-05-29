@@ -72,11 +72,13 @@ class HostScanner:
 
     def _get_ndp_cache(self) -> dict[str, str]:
         result: dict[str, str] = {}
-        out = shell.output_suppressed(f'ip -6 neigh show dev {self.interface} 2>/dev/null | grep -v fe80')
+        out = shell.output_safe(f'ip -6 neigh show dev {self.interface}')
         for line in out.splitlines():
             parts = line.split()
             if len(parts) >= 5 and parts[1] == 'lladdr':
                 ip = parts[0].lower()
+                if ip.startswith('fe80'):
+                    continue
                 mac = parts[2].lower()
                 if mac != '00:00:00:00:00:00':
                     result[ip] = mac

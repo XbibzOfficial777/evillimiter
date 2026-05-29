@@ -20,7 +20,7 @@ def get_default_gateway() -> str | None:
 
 
 def get_default_gateway_ipv6(interface: str) -> str | None:
-    out = shell.output_suppressed(f'ip -6 route show default dev {interface} 2>/dev/null | head -1 | awk \'{{print $3}}\'')
+    out = shell.output_safe(f'ip -6 route show default dev {interface} | head -1 | awk \'{{print $3}}\'')
     return out.strip() or None
 
 
@@ -53,7 +53,7 @@ def get_mac_by_ip(interface: str, address: str) -> str | None:
 
 def get_mac_by_ipv6(interface: str, address: str) -> str | None:
     shell.execute_suppressed(f'ping6 -c 1 -W 1 -I {interface} {address} 2>/dev/null')
-    out = shell.output_suppressed(f'ip -6 neigh get {address} dev {interface} 2>/dev/null')
+    out = shell.output_safe(f'ip -6 neigh get {address} dev {interface}')
     if 'lladdr' in out:
         parts = out.split()
         for i, p in enumerate(parts):
