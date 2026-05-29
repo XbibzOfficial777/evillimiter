@@ -30,6 +30,26 @@ quiet() {
     fi
 }
 
+spin() {
+    local msg="$1"
+    local pid=$2
+    local spinstr='-\|/'
+    local i=0
+    while kill -0 $pid 2>/dev/null; do
+        printf "\r${YELLOW}  [%c] %s${NC}" "${spinstr:$i:1}" "$msg"
+        i=$(( (i+1) % 4 ))
+        sleep 0.1
+    done
+    wait $pid
+    local rc=$?
+    if [[ $rc -eq 0 ]]; then
+        printf "\r${GREEN}  [+] %s${NC}\n" "$msg"
+    else
+        printf "\r${RED}  [x] %s${NC}\n" "$msg"
+        exit 1
+    fi
+}
+
 clear
 
 echo -e "${RED}"
@@ -66,37 +86,19 @@ section() {
     echo ""
 }
 
-run() {
-    echo -e "${YELLOW}  [>] $1${NC}"
-}
-
-ok() {
-    echo -e "${GREEN}  [+] $1${NC}"
-}
-
-fail() {
-    echo -e "${RED}  [x] $1${NC}"
-    if [[ -n "$2" ]]; then
-        echo -e "${RED}      $2${NC}"
-    fi
-}
-
 PIP="python3 -m pip install --break-system-packages"
 
 # ── SYSTEM UPDATE ──
 section "Preparing System"
-run "Updating package list"
-quiet apt-get update -y
-ok "Package list updated"
+(quiet apt-get update -y) &
+spin "Updating package list" $!
 
 section "Installing Dependencies"
-run "Installing Python 3, pip, git, curl"
-quiet apt-get install -y python3 python3-pip git curl
-ok "Base dependencies installed"
+(quiet apt-get install -y python3 python3-pip git curl) &
+spin "Installing Python 3, pip, git, curl" $!
 
 # ── REMOVE OLD ──
 section "Removing Previous Installation"
-run "Cleaning old evillimiter completely"
 pip3 uninstall evillimiter -y 2>/dev/null
 pip3 uninstall evillimiter -y 2>/dev/null
 rm -rf /usr/local/lib/python*/dist-packages/evillimiter* 2>/dev/null
@@ -105,95 +107,73 @@ rm -rf /usr/local/bin/evillimiter* 2>/dev/null
 rm -rf /usr/lib/python*/dist-packages/evillimiter* 2>/dev/null
 rm -rf "$HIDDEN_DIR" 2>/dev/null
 rm -rf /root/.local/lib/python*/site-packages/evillimiter* 2>/dev/null
-ok "Old installation cleaned"
+echo -e "${GREEN}  [+] Old installation cleaned${NC}"
 
 # ── DOWNLOAD ──
 section "Downloading Evil Limiter"
 rm -rf /tmp/.evillimiter-install 2>/dev/null
 mkdir -p /tmp/.evillimiter-install
-cd /tmp/.evillimiter-install
 
-run "Downloading from GitHub"
-quiet curl -sSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz
-ok "Download complete"
+(quiet curl -sSL "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o /tmp/.evillimiter-install/evillimiter.tar.gz) &
+spin "Downloading from GitHub" $!
 
-run "Extracting archive"
-quiet tar -xzf evillimiter.tar.gz
-cd "evillimiter-master"
-ok "Extracted successfully"
+(quiet tar -xzf /tmp/.evillimiter-install/evillimiter.tar.gz -C /tmp/.evillimiter-install) &
+spin "Extracting archive" $!
 
 # ── INSTALL PYTHON DEPS ──
 section "Installing Python Packages"
 
-# terminaltables via apt (system-wide, no PEP 668 issue)
-run "Installing terminaltables via apt"
-quiet apt-get install -y python3-terminaltables
-if python3 -c "from terminaltables import SingleTable" 2>/dev/null; then
-    ok "terminaltables installed (apt)"
-else
-    fail "apt install failed, trying pip"
-    $PIP terminaltables 2>&1
-    if python3 -c "from terminaltables import SingleTable" 2>/dev/null; then
-        ok "terminaltables installed (pip)"
-    else
-        fail "terminaltables could not be installed"
+(quiet apt-get install -y python3-terminaltables) &
+spin "Installing terminaltables via apt" $!
+
+if ! python3 -c "from terminaltables import SingleTable" 2>/dev/null; then
+    echo -e "${YELLOW}  [>] apt failed, trying pip...${NC}"
+    quiet $PIP terminaltables
+    if ! python3 -c "from terminaltables import SingleTable" 2>/dev/null; then
+        echo -e "${RED}  [x] terminaltables could not be installed${NC}"
         exit 1
     fi
+    echo -e "${GREEN}  [+] terminaltables installed (pip)${NC}"
+else
+    echo -e "${GREEN}  [+] terminaltables installed (apt)${NC}"
 fi
 
-run "Installing pip dependencies (colorama, scapy, etc)"
-quiet $PIP colorama netaddr netifaces tqdm scapy
-if [[ $? -eq 0 ]]; then
-    ok "Python packages installed"
-else
-    fail "pip install failed"
-    exit 1
-fi
+(quiet $PIP colorama netaddr netifaces tqdm scapy) &
+spin "Installing pip dependencies (colorama, scapy, etc)" $!
 
 # ── INSTALL EVILLIMITER ──
 section "Installing Evil Limiter"
-run "Running setup.py install"
-quiet python3 setup.py install
-if [[ $? -eq 0 ]]; then
-    ok "Evil Limiter installed"
-else
-    fail "Installation failed"
-    exit 1
-fi
+(quiet python3 /tmp/.evillimiter-install/evillimiter-master/setup.py install) &
+spin "Running setup.py install" $!
 
 # ── VERIFY ──
-run "Verifying installation"
 if python3 -c "from terminaltables import SingleTable; print('OK')" 2>/dev/null; then
-    ok "Import verification passed"
+    echo -e "${GREEN}  [+] Import verification passed${NC}"
 else
-    fail "Import failed, fixing symlink..."
+    echo -e "${RED}  [x] Import failed, fixing symlink...${NC}"
     python3 -c "import sys; sys.path.insert(0, '/usr/lib/python3/dist-packages'); from terminaltables import SingleTable; print('OK')" 2>&1
 fi
 
 # ── HIDDEN SOURCE ──
 section "Securing Installation"
-run "Storing source in hidden directory"
-cd /tmp/.evillimiter-install
 rm -rf "$HIDDEN_DIR" 2>/dev/null
 mkdir -p "$HIDDEN_DIR"
-cp -r evillimiter-master/* "$HIDDEN_DIR/"
+cp -r /tmp/.evillimiter-install/evillimiter-master/* "$HIDDEN_DIR/"
 chmod -R 755 "$HIDDEN_DIR"
-ok "Source stored in $HIDDEN_DIR"
+echo -e "${GREEN}  [+] Source stored in $HIDDEN_DIR${NC}"
 
 # ── CLEANUP ──
 section "Cleaning Up"
-run "Removing temporary files"
 rm -rf /tmp/.evillimiter-install /tmp/evillimiter* /tmp/pip-* 2>/dev/null
-ok "Temp files removed"
+echo -e "${GREEN}  [+] Temp files removed${NC}"
 
-run "Removing cache"
 find /usr/local/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find /usr/local/lib -name "*.pyc" -delete 2>/dev/null
 find "$HIDDEN_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find "$HIDDEN_DIR" -name "*.pyc" -delete 2>/dev/null
 rm -rf /root/.cache/pip/* 2>/dev/null
 pip3 cache purge 2>/dev/null
-ok "Cache cleared"
+echo -e "${GREEN}  [+] Cache cleared${NC}"
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
