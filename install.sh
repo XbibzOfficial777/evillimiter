@@ -9,7 +9,6 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
@@ -34,37 +33,6 @@ echo -e "${GREEN}by bitbrute  ~  limit devices on your network :3${NC}"
 echo -e "${RED}recoded by xbibz official${NC}"
 echo ""
 
-spinner() {
-    local pid=$1
-    local msg="$2"
-    local spin='-\|/'
-    local i=0
-    while kill -0 "$pid" 2>/dev/null; do
-        i=$(( (i+1) % 4 ))
-        printf "\r${CYAN}[${spin:$i:1}]${NC} ${msg}..."
-        sleep 0.1
-    done
-    printf "\r${GREEN}[+]${NC} ${msg}... ${GREEN}Done${NC}\n"
-}
-
-section() {
-    echo ""
-    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}${WHITE}  >> $1${NC}"
-    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-}
-
-step() {
-    local msg="$1"
-    shift
-    ("$@") &>/dev/null &
-    local pid=$!
-    spinner "$pid" "$msg"
-    wait "$pid"
-    return $?
-}
-
 if [[ $EUID -ne 0 ]]; then
     echo -e "${RED}╔══════════════════════════════════════════╗${NC}"
     echo -e "${RED}║  [!] ERROR: Must be run as root (sudo)! ║${NC}"
@@ -79,99 +47,126 @@ echo -e "${DIM}│${NC} ${WHITE}User:${NC} root"
 echo -e "${DIM}└─────────────────────────────────────┘${NC}"
 echo ""
 
+section() {
+    echo ""
+    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${WHITE}  >> $1${NC}"
+    echo -e "${MAGENTA}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+}
+
+run_step() {
+    echo -e "${YELLOW}  [>] $1...${NC}"
+}
+
+ok_step() {
+    echo -e "${GREEN}  [+] $1${NC}"
+}
+
+fail_step() {
+    echo -e "${RED}  [x] $1${NC}"
+    if [[ -n "$2" ]]; then
+        echo -e "${RED}      $2${NC}"
+    fi
+}
+
+# ── Update & Dependencies ──
 section "Preparing System"
-step "Updating package list" apt-get update -y
+run_step "Updating package list"
+apt-get update -y 2>&1 | tail -1
+ok_step "Package list updated"
 
 section "Installing Dependencies"
-step "Installing Python 3 & tools" apt-get install -y python3 python3-pip curl
+run_step "Installing Python 3, pip, git, curl"
+apt-get install -y python3 python3-pip git curl 2>&1 | tail -3
+ok_step "Dependencies installed"
 
 section "Removing Previous Installation"
-echo -e "${YELLOW}  [>] Removing old evillimiter (if any)...${NC}"
+run_step "Removing old evillimiter"
+pip3 uninstall evillimiter -y 2>/dev/null
 pip3 uninstall evillimiter -y 2>/dev/null
 rm -rf /usr/local/lib/python*/dist-packages/evillimiter* /usr/local/bin/evillimiter* 2>/dev/null
 rm -rf /usr/lib/python*/dist-packages/evillimiter* 2>/dev/null
 rm -rf "$HIDDEN_DIR" 2>/dev/null
-echo -e "${GREEN}  [+] Clean${NC}"
+ok_step "Old installation cleaned"
 
 section "Downloading Evil Limiter"
 rm -rf /tmp/.evillimiter-install 2>/dev/null
 mkdir -p /tmp/.evillimiter-install
 cd /tmp/.evillimiter-install
 
-echo -e "${YELLOW}  [>] Downloading from GitHub...${NC}"
-curl -#L "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz 2>&1 | while IFS= read -r line; do
-    if [[ "$line" =~ [0-9]+% ]]; then
-        echo -ne "\r${CYAN}  [~] Progress: ${line}${NC}   "
-    fi
-done
-echo -e "\r${GREEN}  [+] Download complete!${NC}   "
+run_step "Downloading from GitHub"
+curl -#L "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o evillimiter.tar.gz 2>&1
+ok_step "Download complete"
 
-echo -e "${YELLOW}  [>] Extracting archive...${NC}"
+run_step "Extracting archive"
 tar -xzf evillimiter.tar.gz
 cd "evillimiter-master"
-echo -e "${GREEN}  [+] Extracted successfully${NC}"
+ok_step "Extracted successfully"
 
 section "Installing Python Packages"
-step "Installing dependencies (colorama, scapy, etc)" pip3 install -r requirements.txt
+run_step "Installing dependencies via pip"
+pip3 install -r requirements.txt 2>&1
+if [[ $? -eq 0 ]]; then
+    ok_step "Python packages installed"
+else
+    fail_step "pip install failed, trying individual packages"
+    pip3 install colorama netaddr netifaces tqdm scapy terminaltables 2>&1
+    if [[ $? -ne 0 ]]; then
+        fail_step "Failed to install Python packages"
+        exit 1
+    fi
+    ok_step "Python packages installed"
+fi
 
 section "Installing Evil Limiter"
-echo -e "${YELLOW}  [*] Running setup.py install...${NC}"
-python3 setup.py install 2>&1 | while IFS= read -r line; do
-    if [[ "$line" == *"Finished"* ]]; then
-        echo -e "${GREEN}  [+] $line${NC}"
-    elif [[ -n "$line" ]]; then
-        echo -e "     ${DIM}$line${NC}"
-    fi
-done
+run_step "Running setup.py install"
+python3 setup.py install 2>&1
+if [[ $? -eq 0 ]]; then
+    ok_step "Evil Limiter installed successfully"
+else
+    fail_step "Installation failed"
+    exit 1
+fi
 
 section "Securing Installation"
-echo -e "${YELLOW}  [>] Moving source to hidden directory...${NC}"
+run_step "Storing source in hidden directory"
 cd /tmp/.evillimiter-install
 rm -rf "$HIDDEN_DIR" 2>/dev/null
 mkdir -p "$HIDDEN_DIR"
 cp -r evillimiter-master/* "$HIDDEN_DIR/"
 chmod -R 755 "$HIDDEN_DIR"
-echo -e "${GREEN}  [+] Source stored in $HIDDEN_DIR${NC}"
+ok_step "Source stored in $HIDDEN_DIR"
 
 section "Cleaning Up"
-echo -e "${YELLOW}  [>] Removing temporary files...${NC}"
+run_step "Removing temporary files"
 rm -rf /tmp/.evillimiter-install /tmp/evillimiter* /tmp/pip-* 2>/dev/null
-echo -e "${GREEN}  [+] Temp files removed${NC}"
+ok_step "Temp files removed"
 
-echo -e "${YELLOW}  [>] Removing build cache...${NC}"
+run_step "Removing build cache"
 find /usr/local/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find /usr/local/lib -name "*.pyc" -delete 2>/dev/null
 find /usr/local/lib -name "*.pyo" -delete 2>/dev/null
 find /usr/local/lib -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
 find /usr/local/lib -name "*.egg" -type d -exec rm -rf {} + 2>/dev/null
-find /opt/.evillimiter -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
-find /opt/.evillimiter -name "*.pyc" -delete 2>/dev/null
-echo -e "${GREEN}  [+] Cache cleared${NC}"
+find "$HIDDEN_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+find "$HIDDEN_DIR" -name "*.pyc" -delete 2>/dev/null
+ok_step "Cache cleared"
 
-echo -e "${YELLOW}  [>] Cleaning pip cache...${NC}"
-rm -rf /root/.cache/pip/* ~/.cache/pip/* 2>/dev/null
+run_step "Cleaning pip cache"
+rm -rf /root/.cache/pip/* 2>/dev/null
 pip3 cache purge 2>/dev/null
-echo -e "${GREEN}  [+] Pip cache cleaned${NC}"
-
-echo -e "${YELLOW}  [>] Cleaning apt cache...${NC}"
-apt-get autoremove -y 2>/dev/null
-apt-get clean 2>/dev/null
-echo -e "${GREEN}  [+] Apt cache cleaned${NC}"
+ok_step "Pip cache cleaned"
 
 echo ""
 echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}║  [OK] EVIL LIMITER INSTALLED SUCCESSFULLY!            ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}╠══════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}║   Run: sudo evillimiter                               ║${NC}"
+echo -e "${GREEN}║   Uninstall: sudo evillimiter --uninstall             ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Run:                                                ${GREEN}║${NC}"
-echo -e "${GREEN}║   sudo evillimiter                                    ${GREEN}║${NC}"
-echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Uninstall:                                          ${GREEN}║${NC}"
-echo -e "${GREEN}║   sudo evillimiter --uninstall                        ${GREEN}║${NC}"
-echo -e "${GREEN}║                                                      ║${NC}"
-echo -e "${GREEN}║   Recoded by: Xbibz Official                          ${GREEN}║${NC}"
+echo -e "${GREEN}║   Recoded by: Xbibz Official                          ║${NC}"
 echo -e "${GREEN}║                                                      ║${NC}"
 echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
 echo ""
