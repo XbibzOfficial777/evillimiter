@@ -65,7 +65,7 @@ class MainMenu(CommandMenu):
         add_parser.add_parameterized_flag('--mac', 'mac')
 
         monitor_parser = self.parser.add_subparser('monitor', self._monitor_handler)
-        monitor_parser.add_parameter('id', required=False)
+        monitor_parser.add_parameter('id', optional=True)
         monitor_parser.add_parameterized_flag('--interval', 'interval')
 
         analyze_parser = self.parser.add_subparser('analyze', self._analyze_handler)

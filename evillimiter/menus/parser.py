@@ -11,7 +11,7 @@ class CommandParser:
         PARAMETERIZED_FLAG_COMMAND = 3
 
     FlagCommand = collections.namedtuple('FlagCommand', 'type, identifier, name')
-    ParameterCommand = collections.namedtuple('ParameterCommand', 'type name')
+    ParameterCommand = collections.namedtuple('ParameterCommand', 'type name optional')
     Subparser = collections.namedtuple('Subparser', 'identifier subparser handler')
 
     def __init__(self) -> None:
@@ -19,10 +19,11 @@ class CommandParser:
         self._parameter_commands: list[collections.namedtuple] = []
         self._subparsers: list[collections.namedtuple] = []
 
-    def add_parameter(self, name: str) -> None:
+    def add_parameter(self, name: str, optional: bool = False) -> None:
         command = CommandParser.ParameterCommand(
             type=CommandParser.CommandType.PARAMETER_COMMAND,
-            name=name
+            name=name,
+            optional=optional
         )
         self._parameter_commands.append(command)
 
@@ -102,7 +103,7 @@ class CommandParser:
                 return
 
         for cmd in self._parameter_commands:
-            if result_dict[cmd.name] is None:
+            if result_dict[cmd.name] is None and not cmd.optional:
                 IO.error(f'parameter {cmd.name} is missing')
                 return
 
