@@ -513,23 +513,40 @@ class MainMenu(CommandMenu):
             duration = max(1, int(args.duration))
 
         host_results = self._get_bandwidth_results()
+        use_promiscuous = False
+
         if not host_results:
-            IO.error('no hosts to graph.')
-            return
+            if not self.hosts:
+                IO.error('no hosts discovered. scan the network first (scan).')
+                return
+            use_promiscuous = True
+            IO.ok(f'sniffing all traffic for {duration if duration else "unlimited"}s...')
+            self.bandwidth_monitor.start_promiscuous(duration=0)
 
         graph = LiveGraph()
         start = time.time()
         try:
             while True:
-                host_results = self._get_bandwidth_results()
-                if not host_results:
-                    break
-                for host, result in host_results:
-                    hid = str(self._get_host_id(host))
-                    graph.add_sample(hid, result.upload_rate.rate, result.download_rate.rate)
                 IO.clear()
                 IO.print(get_main_banner(self.version))
-                IO.print(graph.render())
+
+                if use_promiscuous:
+                    summary = self.bandwidth_monitor.get_promiscuous_summary(top_n=20)
+                    IO.print(f'{IO.Style.BRIGHT}Top Talkers (promiscuous mode){IO.Style.RESET_ALL}')
+                    for ip, total_bytes, direction in summary[:10]:
+                        rate_bps = total_bytes * 8 / max(interval, 0.1)
+                        label = f'{direction:<8}'
+                        bar = '█' * min(30, max(1, int(rate_bps / 10000))) if rate_bps > 0 else '░'
+                        IO.print(f'  {ip:<20} {label} {bar} {LiveGraph.format_rate(int(rate_bps))}')
+                else:
+                    host_results = self._get_bandwidth_results()
+                    if not host_results:
+                        break
+                    for host, result in host_results:
+                        hid = str(self._get_host_id(host))
+                        graph.add_sample(hid, result.upload_rate.rate, result.download_rate.rate)
+                    IO.print(graph.render())
+
                 IO.print(f"\nInterval: {interval}s | Ctrl+C to stop")
                 if duration and (time.time() - start) >= duration:
                     break
@@ -755,6 +772,15 @@ class MainMenu(CommandMenu):
 
         IO.print(
             f"""
+{b}--- QUICK START ---{r}
+  {b}1.{r} {y}scan{r}                          → find devices on network
+  {b}2.{r} {y}hosts{r}                         → see device IDs
+  {b}3.{r} {y}limit [ID] [rate]{r}             → throttle bandwidth
+  {b}4.{r} {y}graph{r}                         → watch live bandwidth
+  {b}5.{r} {y}quit{r}                          → cleanup & exit
+
+{b}--- COMMANDS ---{r}
+
 {y}scan (--range [IP range]){r}{s[scan_len:]}scans for online hosts on your network.
 {s}required to find the hosts you want to limit.
 {b}{s}e.g.: scan
@@ -762,20 +788,23 @@ class MainMenu(CommandMenu):
 {s}      scan --range 192.168.178.1/24{r}
 
 {y}hosts (--force){r}{s[hosts_len:]}lists all scanned hosts.
-{s}contains host information, including IDs.
+{s}shows ID, IP, MAC, IPv6, hostname, status, and bypass detection.
+{s}the Bypass column shows {y}BYPASS{r} (spoof overridden) or {y}WARN{r} (ARP mismatch).
 
-{y}limit [ID1,ID2,...] [rate]{r}{s[limit_len:]}limits bandwith of host(s) (uload/dload).
+{y}limit [ID1,ID2,...] [rate]{r}{s[limit_len:]}limits bandwith of host(s) (upload+download).
 {y}      (--upload) (--download){r}{s[ud_len:]}{b}e.g.: limit 4 100kbit
 {s}      limit 2,3,4 1gbit --download
 {s}      limit all 200kbit --upload{r}
+{s}supported rate formats: 500kbit, 1mbit, 10mbit, 1gbit
 
 {y}block [ID1,ID2,...]{r}{s[block_len:]}blocks internet access of host(s).
 {y}      (--upload) (--download){r}{s[ud_len:]}{b}e.g.: block 3,2
 {s}      block all --upload{r}
 
-{y}blockall{r}{s[blockall_len:]}blocks internet for ALL hosts.
+{y}blockall{r}{s[blockall_len:]}blocks internet for ALL discovered hosts at once.
+{s}no arguments needed. use {y}unblockall{r} to revert.
 
-{y}unblockall{r}{s[unblockall_len:]}frees ALL hosts.
+{y}unblockall{r}{s[unblockall_len:]}frees ALL hosts at once (unlimits + unblocks).
 
 {y}free [ID1,ID2,...]{r}{s[free_len:]}unlimits/unblocks host(s).
 {b}{s}e.g.: free 3
@@ -786,8 +815,11 @@ class MainMenu(CommandMenu):
 {s}      flap 6 --block 3 --free 1
 {s}      flap all --block 5 --free 2{r}
 
-{y}graph (--interval [ms]) (--duration [s]){r}{s[graph_len:]}live bandwidth graph for monitored hosts.
-{b}{s}e.g.: graph --interval 1000 --duration 30{r}
+{y}graph (--interval [ms]) (--duration [s]){r}{s[graph_len:]}live bandwidth graph.
+{s}shows real-time upload/download per host.
+{s}if no hosts are limited, automatically sniffs ALL traffic (promiscuous).{b}
+{s}e.g.: graph --interval 1000 --duration 30
+{s}      graph  (shows up to 20 top talkers){r}
 
 {y}add [IP] (--mac [MAC]){r}{s[add_len:]}adds custom host to host list.
 {s}mac resolved automatically.
@@ -795,15 +827,18 @@ class MainMenu(CommandMenu):
 {s}      add 192.168.1.50 --mac 1c:fc:bc:2d:a6:37{r}
 
 {y}monitor (--interval [time in ms]){r}{s[mon_len:]}monitors bandwidth usage of limited host(s).
-{b}{s}e.g.: monitor --interval 600{r}
+{s}curses-based real-time display.{b}
+{s}e.g.: monitor --interval 600{r}
 
 {y}analyze [ID1,ID2,...]{r}{s[anal_len:]}analyzes traffic of host(s) without limiting
 {y}        (--duration [time in s]){r}{s[dur_len:]}to determine who uses how much bandwidth.
-{b}{s}e.g.: analyze 2,3 --duration 120{r}
+{s}shows bar charts for upload and download.{b}
+{s}e.g.: analyze 2,3 --duration 120{r}
 
 {y}watch{r}{s[watch_len:]}detects host reconnects with different IP.
 {y}watch add [ID1,ID2,...]{r}{s[watch_add_len:]}adds host to the reconnection watchlist.
-{b}{s}e.g.: watch add 3,4{r}
+{s}when a host reconnects with a new IP, limits are auto-reapplied.{b}
+{s}e.g.: watch add 3,4{r}
 {y}watch remove [ID1,ID2,...]{r}{s[watch_rem_len:]}removes host from the reconnection watchlist.
 {b}{s}e.g.: watch remove all{r}
 {y}watch set [attr] [value]{r}{s[watch_set_len:]}changes reconnect watch settings.
@@ -830,7 +865,7 @@ class MainMenu(CommandMenu):
 
 {y}debug{r}{s[debug_len:]}shows diagnostic info (iptables, ip_forward, spoof state).
 
-{y}quit{r}{s[quit_len:]}quits the application.
+{y}quit{r}{s[quit_len:]}quits the application (cleans up spoof, limits, monitor).
             """
         )
 
