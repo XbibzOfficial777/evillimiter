@@ -65,6 +65,7 @@ class MainMenu(CommandMenu):
         add_parser.add_parameterized_flag('--mac', 'mac')
 
         monitor_parser = self.parser.add_subparser('monitor', self._monitor_handler)
+        monitor_parser.add_parameter('id', required=False)
         monitor_parser.add_parameterized_flag('--interval', 'interval')
 
         analyze_parser = self.parser.add_subparser('analyze', self._analyze_handler)
@@ -495,10 +496,26 @@ class MainMenu(CommandMenu):
                 return
             interval = int(args.interval) / 1000
 
-        if not self._get_bandwidth_results():
-            IO.error('no hosts to be monitored.')
+        hosts_to_monitor = []
+        if args.id:
+            hosts = self._get_hosts_by_ids(args.id)
+            if hosts is None or len(hosts) == 0:
+                return
+            hosts_to_monitor = list(hosts)
+        elif self.hosts:
+            hosts_to_monitor = list(self.hosts)
+        else:
+            IO.error('no hosts to be monitored. scan the network first.')
             return
 
+        for host in hosts_to_monitor:
+            if not host.spoofed:
+                self.arp_spoofer.add(host)
+                if self.ndp_spoofer and host.ipv6:
+                    self.ndp_spoofer.add(host)
+            self.bandwidth_monitor.add(host)
+
+        time.sleep(1)
         try:
             curses.wrapper(self._monitor_display, interval)
         except curses.error:
@@ -753,7 +770,7 @@ class MainMenu(CommandMenu):
         unblockall_len = len('unblockall')
         free_len = len('free [ID1,ID2,...]')
         add_len = len('add [IP] (--mac [MAC])')
-        mon_len = len('monitor (--interval [time in ms])')
+        mon_len = len('monitor [ID1,ID2,...] (--interval [time in ms])')
         anal_len = len('analyze [ID1,ID2,...]')
         dur_len = len('        (--duration [time in s])')
         watch_len = len('watch')
@@ -826,9 +843,12 @@ class MainMenu(CommandMenu):
 {b}{s}e.g.: add 192.168.178.24
 {s}      add 192.168.1.50 --mac 1c:fc:bc:2d:a6:37{r}
 
-{y}monitor (--interval [time in ms]){r}{s[mon_len:]}monitors bandwidth usage of limited host(s).
-{s}curses-based real-time display.{b}
-{s}e.g.: monitor --interval 600{r}
+{y}monitor [ID1,ID2,...] (--interval [time in ms]){r}{s[mon_len:]}monitors bandwidth usage of host(s) in real-time.
+{s}if no IDs given, monitors ALL hosts automatically.
+{s}curses-based real-time display (Ctrl+C to exit).{b}
+{s}e.g.: monitor
+{s}      monitor 2,3
+{s}      monitor all --interval 600{r}
 
 {y}analyze [ID1,ID2,...]{r}{s[anal_len:]}analyzes traffic of host(s) without limiting
 {y}        (--duration [time in s]){r}{s[dur_len:]}to determine who uses how much bandwidth.
