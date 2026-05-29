@@ -2,6 +2,8 @@ import argparse
 import collections
 import os
 import platform
+import shutil
+import subprocess
 
 import netaddr
 import evillimiter.networking.utils as netutils
@@ -42,6 +44,7 @@ def parse_arguments() -> argparse.Namespace:
     other_group = parser.add_argument_group('Other')
     other_group.add_argument('--colorless', action='store_true', help='disable colored output.')
     other_group.add_argument('-v', '--version', action='version', version=f'evillimiter {__version__}')
+    other_group.add_argument('--uninstall', action='store_true', help='completely remove evillimiter and all its files.')
 
     return parser.parse_args()
 
@@ -151,6 +154,44 @@ def run() -> None:
 
     if not is_privileged():
         IO.error('run as root.')
+        return
+
+    if args.uninstall:
+        IO.print(f'[{IO.Fore.LIGHTYELLOW_EX}*{IO.Style.RESET_ALL}] Uninstalling evillimiter...')
+        IO.spacer()
+
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Cleaning network settings...')
+        netutils.cleanup_all()
+
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing package...')
+        subprocess.run(['pip3', 'uninstall', 'evillimiter', '-y'], capture_output=True)
+        subprocess.run(['pip3', 'uninstall', 'evillimiter', '-y'], capture_output=True)
+
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing binary...')
+        for path in ['/usr/local/bin/evillimiter', '/usr/bin/evillimiter']:
+            if os.path.exists(path):
+                os.remove(path)
+
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Removing cache files...')
+        for d in ['/tmp/evillimiter*']:
+            subprocess.run(['rm', '-rf', d], stderr=subprocess.DEVNULL)
+
+        python_libs = '/usr/local/lib'
+        if os.path.exists(python_libs):
+            for root, dirs, files in os.walk(python_libs):
+                for d in dirs:
+                    if d == '__pycache__' or d.endswith('.egg-info'):
+                        shutil.rmtree(os.path.join(root, d), ignore_errors=True)
+                for f in files:
+                    if f.endswith('.pyc'):
+                        os.remove(os.path.join(root, f))
+
+        IO.print(f'  [{IO.Fore.LIGHTYELLOW_EX}>{IO.Style.RESET_ALL}] Cleaning pip cache...')
+        subprocess.run(['pip3', 'cache', 'purge'], capture_output=True)
+
+        IO.spacer()
+        IO.ok('evillimiter has been completely uninstalled.')
+        IO.print(f'[{IO.Fore.LIGHTRED_EX}!{IO.Style.RESET_ALL}] Recoded by Xbibz Official')
         return
 
     if args.cleanup:
