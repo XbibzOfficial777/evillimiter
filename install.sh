@@ -106,18 +106,33 @@ ok_step "Extracted successfully"
 
 section "Installing Python Packages"
 run_step "Installing dependencies via pip"
-pip3 install -r requirements.txt 2>&1
-if [[ $? -eq 0 ]]; then
-    ok_step "Python packages installed"
-else
+pip3 install --break-system-packages -r requirements.txt 2>&1
+if [[ $? -ne 0 ]]; then
+    pip3 install -r requirements.txt 2>&1
+fi
+if [[ $? -ne 0 ]]; then
     fail_step "pip install failed, trying individual packages"
+    pip3 install --break-system-packages colorama netaddr netifaces tqdm scapy terminaltables 2>&1 || \
     pip3 install colorama netaddr netifaces tqdm scapy terminaltables 2>&1
     if [[ $? -ne 0 ]]; then
         fail_step "Failed to install Python packages"
         exit 1
     fi
-    ok_step "Python packages installed"
 fi
+ok_step "Python packages installed"
+
+run_step "Verifying terminaltables"
+python3 -c "from terminaltables import SingleTable" 2>&1
+if [[ $? -ne 0 ]]; then
+    fail_step "terminaltables not installed, trying manually"
+    pip3 install terminaltables --break-system-packages 2>&1 || pip3 install terminaltables 2>&1
+    python3 -c "from terminaltables import SingleTable" 2>&1
+    if [[ $? -ne 0 ]]; then
+        fail_step "terminaltables still missing, trying apt"
+        apt-get install -y python3-terminaltables 2>/dev/null || true
+    fi
+fi
+ok_step "All dependencies verified"
 
 section "Installing Evil Limiter"
 run_step "Running setup.py install"
@@ -147,8 +162,6 @@ run_step "Removing build cache"
 find /usr/local/lib -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find /usr/local/lib -name "*.pyc" -delete 2>/dev/null
 find /usr/local/lib -name "*.pyo" -delete 2>/dev/null
-find /usr/local/lib -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
-find /usr/local/lib -name "*.egg" -type d -exec rm -rf {} + 2>/dev/null
 find "$HIDDEN_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find "$HIDDEN_DIR" -name "*.pyc" -delete 2>/dev/null
 ok_step "Cache cleared"
