@@ -5,10 +5,9 @@ import logging
 from tqdm import tqdm
 from netaddr import IPAddress
 from scapy.all import sr1, ARP
-from scapy.config import conf as scapy_conf
 from concurrent.futures import ThreadPoolExecutor
 
-scapy_conf.log_level = logging.ERROR
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 
 from .host import Host
 from evillimiter.console.io import IO

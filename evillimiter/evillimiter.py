@@ -3,8 +3,10 @@ import collections
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
+import time
 import urllib.request
 import urllib.error
 
@@ -18,6 +20,8 @@ from evillimiter.networking.scan import HostScanner
 from evillimiter.networking.spoof import NDPSpoofer
 
 REPO_API = 'https://api.github.com/repos/XbibzOfficial777/evillimiter/releases/latest'
+CACHE_FILE = '/opt/.evillimiter/.update_cache'
+CACHE_TTL = 86400  # 1 day in seconds
 
 
 InitialArguments = collections.namedtuple('InitialArguments', 'interface, gateway_ip, netmask, gateway_mac')
@@ -148,16 +152,37 @@ def _print_startup_info(version: str, interface: str, gateway_ip: str, gateway_m
 
 
 def check_for_update() -> str | None:
+    # check cache first
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE) as f:
+                cached = f.read().strip()
+            ts_str, ver = cached.split('|', 1)
+            if time.time() - float(ts_str) < CACHE_TTL:
+                return ver if ver else None
+        except (ValueError, OSError):
+            pass
+
     try:
         req = urllib.request.Request(REPO_API, headers={'User-Agent': 'evillimiter', 'Accept': 'application/vnd.github+json'})
         with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read())
-        latest = data.get('tag_name', '').lstrip('v')
-        if latest and latest != __version__:
-            return latest
+            data = json.loads(resp.read().decode())
+        latest_tag = data.get('tag_name', '')
+        m = re.search(r'(\d+\.\d+\.\d+)', latest_tag)
+        latest = m.group(1) if m else ''
+        result = latest if (latest and latest != __version__) else ''
     except (urllib.error.URLError, json.JSONDecodeError, KeyError, OSError):
+        result = ''
+
+    # write cache
+    try:
+        os.makedirs(os.path.dirname(CACHE_FILE), exist_ok=True)
+        with open(CACHE_FILE, 'w') as f:
+            f.write(f'{time.time()}|{result}')
+    except OSError:
         pass
-    return None
+
+    return result if result else None
 
 
 def run() -> None:
