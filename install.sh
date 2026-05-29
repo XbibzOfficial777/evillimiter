@@ -92,6 +92,13 @@ step "Updating package list" apt-get update -y
 section "Installing Dependencies"
 step "Installing Python 3 & tools" apt-get install -y python3 python3-pip curl
 
+section "Removing Previous Installation"
+echo -e "${YELLOW}  [>] Removing old evillimiter (if any)...${NC}"
+pip3 uninstall evillimiter -y 2>/dev/null
+rm -rf /usr/local/lib/python*/dist-packages/evillimiter* /usr/local/bin/evillimiter* 2>/dev/null
+rm -rf /usr/lib/python*/dist-packages/evillimiter* 2>/dev/null
+echo -e "${GREEN}  [+] Clean${NC}"
+
 section "Downloading Evil Limiter"
 cd /tmp
 rm -rf evillimiter-master evillimiter 2>/dev/null
@@ -124,8 +131,23 @@ python3 setup.py install 2>&1 | while IFS= read -r line; do
 done
 
 # ── Cleanup ──
+section "Cleaning Up"
+
+echo -e "${YELLOW}  [>] Removing temporary files...${NC}"
 cd /tmp
 rm -rf evillimiter-master evillimiter.tar.gz 2>/dev/null
+echo -e "${GREEN}  [+] Temp files removed${NC}"
+
+echo -e "${YELLOW}  [>] Removing build cache...${NC}"
+rm -rf /tmp/evillimiter* 2>/dev/null
+find /usr/local/lib/python*/dist-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+find /usr/local/lib/python*/dist-packages -name "*.pyc" -delete 2>/dev/null
+find /usr/local/lib/python*/dist-packages -name "*.egg-info" -type d -exec rm -rf {} + 2>/dev/null
+echo -e "${GREEN}  [+] Cache cleared${NC}"
+
+echo -e "${YELLOW}  [>] Cleaning pip cache...${NC}"
+pip3 cache purge 2>/dev/null
+echo -e "${GREEN}  [+] Pip cache cleaned${NC}"
 
 # ── Success message ──
 echo ""
