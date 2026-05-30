@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://i.imgur.com/CBGh0Yx.png" width="200"/>
+  <img src="https://i.vgy.me/tfrvUe.jpg" width="200"/>
   <h1>Evil Limiter</h1>
   <p><b>Monitor / Analyze / Limit Bandwidth</b></p>
   <p>
